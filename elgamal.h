@@ -19,6 +19,8 @@ int generate_key(struct PrivateKey *a);
 int priv2pub(struct PublicKey *a, const struct PrivateKey priv);
 int encrypt(struct CipherText *a, const struct PlainText plain, const struct PublicKey pub);
 int decrypt(struct PlainText *a, const struct CipherText x, const struct PrivateKey key);
+int decode_equal(const struct PlainText x, const unsigned int y);
+int private_equality_test(struct CipherText *a, const struct CipherText x, const struct CipherText y);
 
 /* generates a random scalar as a private elgamal key */
 int generate_key(struct PrivateKey *a) {
@@ -61,11 +63,12 @@ int decrypt(struct PlainText *a, const struct CipherText x, const struct Private
   return 0;
 }
 
-/* encodes a single byte as a PlainText Ristretto point message */
-int encode(struct PlainText *a, const unsigned char message) {
+/* encodes an unsigned int as a PlainText Ristretto point message */
+int encode(struct PlainText *a, const unsigned int message) {
   unsigned char s[crypto_core_ristretto255_SCALARBYTES];
   memset(s, 0, sizeof s);
-  s[0] = message;
+  //s[0] = message;
+  memcpy(s,(char*)&message, sizeof(unsigned int));
   return crypto_scalarmult_ristretto255_base(a->val, s); // will return 0 on success and -1 on failure
 }
 
@@ -100,7 +103,43 @@ unsigned char decode(const struct PlainText x) {
   return a;
 }
 
+/* tests if a Ristretto point message decrypts to a particular integer
+ * returns -1 on failure (i.e. not equal)
+ * returns 0 on success (i.e. equal)
+ * */
+int decode_equal(const struct PlainText x, const unsigned int y) {
+  unsigned char s[crypto_core_ristretto255_SCALARBYTES];
+  struct PlainText guess;
+  memset(s, 0, sizeof s);
+  memcpy(s,(char*)&y, sizeof(unsigned int));
+  crypto_scalarmult_ristretto255_base(guess.val, s);
+  if (memcmp(guess.val, x.val, crypto_core_ristretto255_BYTES)==0) {
+    return 0;
+  }
+  return -1;
+}
 
+/* Puts an enciphered 1 into "a" if the two are equal. Otherwise "a" is an enciphered random number
+ *
+ * returns 0 on success, and -1 on failure
+ *
+ * https://crypto.stackexchange.com/questions/9527/how-does-an-oblivious-test-of-plaintext-equality-work
+*/
+int private_equality_test(struct CipherText *a, const struct CipherText x, const struct CipherText y) {
+  // t.c1 = x.c1 - y.c1
+  // t.c2 = x.c2 - y.c2
+  // z = randint(0, L)
+  // a->c1 = t.c1 * z
+  // a->c2 = t.c2 * z
+  struct CipherText t;
+  if (crypto_core_ristretto255_sub(t.c1, x.c1, y.c1) != 0) {return -1; }
+  if (crypto_core_ristretto255_sub(t.c2, x.c2, y.c2) != 0) {return -1; }
+  unsigned char z[crypto_core_ristretto255_SCALARBYTES];
+  crypto_core_ristretto255_scalar_random(z);
+  if (crypto_scalarmult_ristretto255(a->c1, z, t.c1) != 0) {return -1; }
+  if (crypto_scalarmult_ristretto255(a->c2, z, t.c2) != 0) {return -1; }
+  return 0;
+}
 
 
 #endif
