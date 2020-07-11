@@ -15,6 +15,11 @@ struct CipherText {
 struct PlainText {
   unsigned char val[crypto_core_ristretto255_BYTES];
 };
+struct UnrolledCipherText64 {
+  struct CipherText val[64];
+};
+
+
 int generate_key(struct PrivateKey *a);
 int priv2pub(struct PublicKey *a, const struct PrivateKey priv);
 int encrypt(struct CipherText *a, const struct PlainText plain, const struct PublicKey pub);
@@ -63,13 +68,16 @@ int decrypt(struct PlainText *a, const struct CipherText x, const struct Private
   return 0;
 }
 
-/* encodes an unsigned int as a PlainText Ristretto point message */
+/* encodes an unsigned int as a PlainText Ristretto point message
+ *
+ * Will return -1 if message=0, or 0 otherwise.
+ * */
 int encode(struct PlainText *a, const unsigned int message) {
   unsigned char s[crypto_core_ristretto255_SCALARBYTES];
   memset(s, 0, sizeof s);
   //s[0] = message;
   memcpy(s,(char*)&message, sizeof(unsigned int));
-  return crypto_scalarmult_ristretto255_base(a->val, s); // will return 0 on success and -1 on failure
+  return crypto_scalarmult_ristretto255_base(a->val, s);
 }
 
 /* add ciphertexts */
@@ -119,7 +127,7 @@ int decode_equal(const struct PlainText x, const unsigned int y) {
   return -1;
 }
 
-/* Puts an enciphered 1 into "a" if the two are equal. Otherwise "a" is an enciphered random number
+/* Puts an enciphered 0 into "a" if the two are equal. Otherwise "a" is an enciphered random number
  *
  * returns 0 on success, and -1 on failure
  *
@@ -141,5 +149,26 @@ int private_equality_test(struct CipherText *a, const struct CipherText x, const
   return 0;
 }
 
+/* Unrolls an int x=4 into an encrypted array [r, r, r, r, 0, 0, ..., 0], where
+ *   each r is a random value
+ *   x is the number of r's
+ *   the length of the array = 64
+ *
+ * Puts the result into "a", and returns 0 on success, -1 on failure
+ * */
+int unroll(struct UnrolledCipherText64 *a, unsigned char x, struct PublicKey pub_key) {
+  struct PlainText tmp_plain;
+  for (int i=0; i<x; i++) {
+    crypto_core_ristretto255_random(tmp_plain.val);
+    if (encrypt( &(a->val[i]), tmp_plain, pub_key) != 0) {return -1; }
+  }
+  for (int i=x; i<64; i++) {
+    if (encode(&tmp_plain, 0) != -1) {return -1; }
+    if (encrypt( &(a->val[i]), tmp_plain, pub_key) != 0) {return -1; }
+  }
+  return 0;
+}
+
+/* Rerolls an UnrolledCipherText64 back into an integer from 1 to 64 */
 
 #endif
