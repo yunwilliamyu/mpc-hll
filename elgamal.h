@@ -16,9 +16,8 @@ struct PlainText {
   unsigned char val[crypto_core_ristretto255_BYTES];
 };
 struct UnrolledCipherText64 {
-  struct CipherText val[64];
+  struct CipherText arr[64];
 };
-
 
 int generate_key(struct PrivateKey *a);
 int priv2pub(struct PublicKey *a, const struct PrivateKey priv);
@@ -156,19 +155,39 @@ int private_equality_test(struct CipherText *a, const struct CipherText x, const
  *
  * Puts the result into "a", and returns 0 on success, -1 on failure
  * */
-int unroll(struct UnrolledCipherText64 *a, unsigned char x, struct PublicKey pub_key) {
+int unroll(struct UnrolledCipherText64 *a, const unsigned char x, const struct PublicKey pub_key) {
   struct PlainText tmp_plain;
+  // Can only encode values from 1 to 64
+  if (x > 64) {return -1; }
+  if (x == 0 ) { return -1; }
   for (int i=0; i<x; i++) {
     crypto_core_ristretto255_random(tmp_plain.val);
-    if (encrypt( &(a->val[i]), tmp_plain, pub_key) != 0) {return -1; }
+    if (encrypt( &(a->arr[i]), tmp_plain, pub_key) != 0) {return -1; }
   }
   for (int i=x; i<64; i++) {
     if (encode(&tmp_plain, 0) != -1) {return -1; }
-    if (encrypt( &(a->val[i]), tmp_plain, pub_key) != 0) {return -1; }
+    if (encrypt( &(a->arr[i]), tmp_plain, pub_key) != 0) {return -1; }
   }
   return 0;
 }
 
-/* Rerolls an UnrolledCipherText64 back into an integer from 1 to 64 */
+/* Rerolls and decrypts an UnrolledCipherText64 back into an integer from 1 to 64 */
+int reroll(unsigned char *a, const struct UnrolledCipherText64 uct, const struct PrivateKey priv_key) {
+  struct PlainText tmp_plain;
+  for (int i=0; i<64; i++) {
+    if (decrypt(&tmp_plain, uct.arr[i], priv_key)!=0) {return -1;}
+    if (decode_equal(tmp_plain, 0)==0) {
+      *a = i;
+      return 0;
+    }
+  }
+  *a = 64;
+  return 0;
+}
+
+
+
+
+
 
 #endif

@@ -123,6 +123,25 @@ void test_private_not_equality(void) {
 //  printf("c2: %s\n", x);
 }
 
+void test_roundtrip_rolling(void) {
+  struct PrivateKey priv_key;
+  generate_key(&priv_key);
+  struct PublicKey pub_key;
+  CU_ASSERT(priv2pub(&pub_key, priv_key) == 0);
+
+  struct UnrolledCipherText64 uct;
+  unsigned char x = 0;
+  for (int i = 1; i<=64; i++ ) {
+    CU_ASSERT(unroll(&uct, i, pub_key) == 0);
+    CU_ASSERT(reroll(&x, uct, priv_key) == 0);
+    CU_ASSERT(x == i);
+    //printf("\n%i\n", x);
+  }
+  // Test out of bounds
+  CU_ASSERT(unroll(&uct, 0, pub_key) == -1);
+  CU_ASSERT(unroll(&uct, 65, pub_key) == -1);
+}
+
 int main() {
   CU_pSuite pSuite1 = NULL;
 
@@ -139,7 +158,8 @@ int main() {
       (NULL == CU_add_test(pSuite1, "Testing encoding 0s.....", test_zero)),
       (NULL == CU_add_test(pSuite1, "Testing addition.....", test_add)),
       (NULL == CU_add_test(pSuite1, "Testing private equality.....", test_private_equality)),
-      (NULL == CU_add_test(pSuite1, "Testing private not equality.....", test_private_not_equality))
+      (NULL == CU_add_test(pSuite1, "Testing private not equality.....", test_private_not_equality)),
+      (NULL == CU_add_test(pSuite1, "Testing roundtrip rolling.....", test_roundtrip_rolling))
       ) {
     CU_cleanup_registry();
     return CU_get_error();
