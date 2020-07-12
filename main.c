@@ -46,7 +46,7 @@ int main(void) {
   int message_decoded = -1;
   message_decoded = decode(dmsg);
   printf("Decoded: %i\n", message_decoded);
-  assert(decode_equal(dmsg, 600));
+  assert(decode_equal(dmsg, 600)==0);
 
 
 
