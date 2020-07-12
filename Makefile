@@ -4,7 +4,7 @@ CFLAGS=-I${IDIR} -lsodium
 
 OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
-all: ${OBJS} main elgamal_test
+all: ${OBJS} main elgamal_test keygen-node
 	echo "All made."
 
 main:
@@ -13,9 +13,12 @@ main:
 elgamal_test:
 	${CC} -o $@ $@.o ${CFLAGS} -lcunit
 
+keygen-node:
+	${CC} -o $@ $@.o ${CFLAGS}
+
 %.o: %.c
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:
-	rm -f ${OBJS} main elgamal_test
+	rm -f ${OBJS} main elgamal_test keygen-node
 	@echo "All cleaned up!"
