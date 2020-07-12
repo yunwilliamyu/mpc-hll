@@ -53,3 +53,4 @@ dkms.conf
 main
 elgamal_test
 keygen-node
+keygen-central

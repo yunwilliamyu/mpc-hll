@@ -35,7 +35,7 @@ int main( int argc, char *argv[] ) {
   // Test if privkey_file exists already and is a private key
   if (privkey_file) {
     bytes_read = fread(buffer, 1, crypto_core_ristretto255_SCALARBYTES + 1, privkey_file);
-    if (bytes_read > crypto_core_ristretto255_SCALARBYTES) {
+    if (bytes_read != crypto_core_ristretto255_SCALARBYTES) {
       printf("ERROR: %s exists and is not a private key file.\nAborting\n", argv[1]);
       return -2;
     } else {
@@ -49,7 +49,7 @@ int main( int argc, char *argv[] ) {
   // Tests if pubkey_file exists already and is a public key
   if (pubkey_file) {
     bytes_read = fread(buffer, 1, crypto_core_ristretto255_BYTES + 1, pubkey_file);
-    if (bytes_read > crypto_core_ristretto255_BYTES) {
+    if (bytes_read != crypto_core_ristretto255_BYTES) {
       printf("ERROR: %s exists and is not a public key file.\nAborting\n", argv[2]);
       return -2;
     } else {
