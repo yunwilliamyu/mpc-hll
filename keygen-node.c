@@ -20,6 +20,10 @@ int main( int argc, char *argv[] ) {
       , argv[0]);
     return 1;
   }
+  if (sodium_init() < 0) {
+    /* Panic!  library couldn't be initialized */
+    exit(-1);
+  }
   unsigned char buffer[crypto_core_ristretto255_SCALARBYTES + 1];
   // Try to read privkey.
   // If it's the right size for a private key (32 bytes), use it.
