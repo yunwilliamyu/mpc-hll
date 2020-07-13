@@ -37,31 +37,17 @@ int main( int argc, char *argv[] ) {
   bool privkey_init = false;
   bool pubkey_init = false;
   // Test if privkey_file exists already and is a private key
-  if (privkey_file) {
-    bytes_read = fread(buffer, 1, crypto_core_ristretto255_SCALARBYTES + 1, privkey_file);
-    if (bytes_read != crypto_core_ristretto255_SCALARBYTES) {
-      printf("ERROR: %s exists and is not a private key file.\nAborting\n", argv[1]);
-      return -2;
-    } else {
-      printf("INFO: Using %s as private key.\n", argv[1]);
-      memcpy(privkey.val, buffer, crypto_core_ristretto255_SCALARBYTES);
-      privkey_init = true;
-    }
-    fclose(privkey_file);
+  if (read_privkey(&privkey, argv[1])==0) {
+    privkey_init = true;
+  } else {
+    privkey_init = false;
   }
 
   // Tests if pubkey_file exists already and is a public key
-  if (pubkey_file) {
-    bytes_read = fread(buffer, 1, crypto_core_ristretto255_BYTES + 1, pubkey_file);
-    if (bytes_read != crypto_core_ristretto255_BYTES) {
-      printf("ERROR: %s exists and is not a public key file.\nAborting\n", argv[2]);
-      return -2;
-    } else {
-      printf("INFO: Using %s as public key.\n", argv[2]);
-      memcpy(pubkey.val, buffer, crypto_core_ristretto255_SCALARBYTES);
-      pubkey_init = true;
-    }
-    fclose(pubkey_file);
+  if (read_pubkey(&pubkey, argv[2])==0) {
+    pubkey_init = true;
+  } else {
+    pubkey_init = false;
   }
 
   if (pubkey_init) {
@@ -71,23 +57,13 @@ int main( int argc, char *argv[] ) {
     }
   }
 
+  size_t bytes_written;
   // If private key file didn't exist, generate it now.
-  size_t bytes_written = 0;
   if (privkey_init == false) {
     printf("INFO: %s does not exist. Generating...\n", argv[1]);
     generate_key(&privkey);
     privkey_file = fopen(argv[1], "wb");
-    if (privkey_file) {
-      printf("INFO: %s written to file\n", argv[1]);
-      bytes_written = fwrite(privkey.val, 1, crypto_core_ristretto255_SCALARBYTES, privkey_file);
-      if (bytes_written != crypto_core_ristretto255_SCALARBYTES) {
-        printf("ERROR: incorrect number of bytes written to %s.\nAborting\n", argv[1]);
-        return -3;
-      }
-    } else {
-      printf("ERROR: could not open %s for writing.\nAborting\n", argv[1]);
-      return -4;
-    }
+    if (write_privkey(privkey, argv[1]) != 0) { return -12; }
     privkey_init == true;
   }
 
@@ -95,18 +71,7 @@ int main( int argc, char *argv[] ) {
   if (pubkey_init == false) {
     printf("INFO: %s does not exist. Generating...\n", argv[2]);
     if (priv2pub(&pubkey, privkey)!=0) {return -10;}
-    pubkey_file = fopen(argv[2], "wb");
-    if (pubkey_file) {
-      printf("INFO: %s written to file\n", argv[2]);
-      bytes_written = fwrite(pubkey.val, 1, crypto_core_ristretto255_BYTES, pubkey_file);
-      if (bytes_written != crypto_core_ristretto255_BYTES) {
-        printf("ERROR: incorrect number of bytes written to %s.\nAborting\n", argv[2]);
-        return -3;
-      }
-    } else {
-      printf("ERROR: could not open %s for writing.\nAborting\n", argv[2]);
-      return -4;
-    }
+    if (write_pubkey(pubkey, argv[2]) != 0) {return -11;}
     pubkey_init == true;
   }
 
