@@ -54,3 +54,4 @@ main
 elgamal_test
 keygen-node
 keygen-central
+*.swp
