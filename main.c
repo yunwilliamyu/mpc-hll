@@ -22,7 +22,7 @@ int main(void) {
 
   struct PlainText msg;
   //crypto_core_ristretto255_random(msg.val);
-  int message_int = 300;
+  unsigned int message_int = 300;
   printf("Message: %i\n", message_int);
   encode(&msg, message_int);
   sodium_bin2hex(x, 128, msg.val, sizeof(msg.val));

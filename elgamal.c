@@ -46,7 +46,7 @@ int decrypt(struct PlainText *a, const struct CipherText x, const struct Private
  *
  * Will return -1 if message=0, or 0 otherwise.
  * */
-int encode(struct PlainText *a, const unsigned int message) {
+int encode(struct PlainText *a, unsigned int message) {
   unsigned char s[crypto_core_ristretto255_SCALARBYTES];
   memset(s, 0, sizeof s);
   //s[0] = message;
@@ -89,7 +89,7 @@ unsigned char decode(const struct PlainText x) {
  * returns -1 on failure (i.e. not equal)
  * returns 0 on success (i.e. equal)
  * */
-int decode_equal(const struct PlainText x, const unsigned int y) {
+int decode_equal(const struct PlainText x, unsigned int y) {
   unsigned char s[crypto_core_ristretto255_SCALARBYTES];
   struct PlainText guess;
   memset(s, 0, sizeof s);
@@ -176,10 +176,10 @@ int read_pubkey(struct PublicKey *a, const char *fn) {
     bytes_read = fread(buffer, 1, crypto_core_ristretto255_BYTES + 1, pubkey_file);
     if ((bytes_read != crypto_core_ristretto255_BYTES) ||
         (crypto_core_ristretto255_is_valid_point(buffer)==0)){
-      printf("ERROR: %s exists and is not a public key file.\n", fn);
+      debug_print("ERROR: %s exists and is not a public key file.\n", fn);
       return -2;
     } else {
-      printf("INFO: Using %s as public key.\n", fn);
+      debug_print("INFO: Using %s as public key.\n", fn);
       memcpy(a->val, buffer, crypto_core_ristretto255_BYTES);
       return 0;
     }
@@ -196,14 +196,14 @@ int write_pubkey(const struct PublicKey pubkey, const char *fn) {
   if (key_file) {
     bytes_written = fwrite(pubkey.val, 1, crypto_core_ristretto255_BYTES, key_file);
     if (bytes_written != crypto_core_ristretto255_BYTES) {
-        printf("ERROR: incorrect number of bytes written to %s.\n", fn);
+        debug_print("ERROR: incorrect number of bytes written to %s.\n", fn);
         return -5;
     }
-    printf("INFO: writing public key to %s.\n", fn);
+    debug_print("INFO: writing public key to %s.\n", fn);
     fclose(key_file);
     return 0;
   } else {
-    printf("ERROR: could not open %s for writing.\n", fn);
+    debug_print("ERROR: could not open %s for writing.\n", fn);
     return -6;
   }
 }
@@ -223,10 +223,10 @@ int read_privkey(struct PrivateKey *a, const char *fn) {
   if (privkey_file) {
     bytes_read = fread(buffer, 1, crypto_core_ristretto255_SCALARBYTES + 1, privkey_file);
     if (bytes_read != crypto_core_ristretto255_SCALARBYTES){
-      printf("ERROR: %s exists and is not a private key file.\n", fn);
+      debug_print("ERROR: %s exists and is not a private key file.\n", fn);
       return -2;
     } else {
-      printf("INFO: Using %s as private key.\n", fn);
+      debug_print("INFO: Using %s as private key.\n", fn);
       memcpy(a->val, buffer, crypto_core_ristretto255_SCALARBYTES);
       return 0;
     }
@@ -243,14 +243,160 @@ int write_privkey(const struct PrivateKey privkey, const char *fn) {
   if (key_file) {
     bytes_written = fwrite(privkey.val, 1, crypto_core_ristretto255_SCALARBYTES, key_file);
     if (bytes_written != crypto_core_ristretto255_SCALARBYTES) {
-        printf("ERROR: incorrect number of bytes written to %s.\n", fn);
+        debug_print("ERROR: incorrect number of bytes written to %s.\n", fn);
         return -5;
     }
-    printf("INFO: writing private key to %s.\n", fn);
+    debug_print("INFO: writing private key to %s.\n", fn);
     fclose(key_file);
     return 0;
   } else {
-    printf("ERROR: could not open %s for writing.\n", fn);
+    debug_print("ERROR: could not open %s for writing.\n", fn);
     return -6;
   }
+}
+
+
+int keygen_node(char *private_fn, char *public_fn) {
+  FILE *privkey_file = fopen(private_fn, "rb");
+  FILE *pubkey_file = fopen(public_fn, "rb");
+
+  unsigned char buffer[crypto_core_ristretto255_SCALARBYTES + 1];
+  // Try to read privkey.
+  // If it's the right size for a private key (32 bytes), use it.
+  // If no such file exists, create a private key and write it
+  // If it exists and is not the right size, fail loudly.
+  size_t bytes_read = 0;
+  struct PrivateKey privkey;
+  struct PublicKey pubkey;
+  bool privkey_init = false;
+  bool pubkey_init = false;
+  // Test if privkey_file exists already and is a private key
+  if (read_privkey(&privkey, private_fn)==0) {
+    privkey_init = true;
+  } else {
+    privkey_init = false;
+  }
+
+  // Tests if pubkey_file exists already and is a public key
+  if (read_pubkey(&pubkey, public_fn)==0) {
+    pubkey_init = true;
+  } else {
+    pubkey_init = false;
+  }
+
+  if (pubkey_init) {
+    if (!privkey_init) {
+      debug_print("ERROR: cannot generate private key from public key.\nAborting\n");
+      return -20;
+    }
+  }
+
+  size_t bytes_written;
+  // If private key file didn't exist, generate it now.
+  if (privkey_init == false) {
+    debug_print("INFO: %s does not exist. Generating...\n", private_fn);
+    generate_key(&privkey);
+    privkey_file = fopen(private_fn, "wb");
+    if (write_privkey(privkey, private_fn) != 0) { return -12; }
+    privkey_init == true;
+  }
+
+  // If public key file didn't exist generate it now.
+  if (pubkey_init == false) {
+    debug_print("INFO: %s does not exist. Generating...\n", public_fn);
+    if (priv2pub(&pubkey, privkey)!=0) {return -10;}
+    if (write_pubkey(pubkey, public_fn) != 0) {return -11;}
+    pubkey_init == true;
+  }
+
+  // Validate that we have a valid public/private key pair
+  struct PublicKey pubkey_tmp;
+  if (priv2pub(&pubkey_tmp, privkey)!=0) {return -10;}
+  if (memcmp(pubkey_tmp.val, pubkey.val, crypto_core_ristretto255_BYTES)==0) {
+    debug_print("INFO: Public/private keys validated\n");
+  } else {
+    debug_print("ERROR: Public/private keys could not be validated.\nDo NOT use.\nAborting\n");
+    return -30;
+  }
+  return 0;
+  
+}
+
+// Generates a combined public key by adding together
+// the list of node public keys
+int combine_public_keys(char *combined_fn, char **node_fns, const int ncount) {
+  FILE *combined_key_file = fopen(combined_fn, "rb");
+  if (combined_key_file) {
+    debug_print("ERROR: %s exists.\nAborting so we don't clobber it.\n", combined_fn);
+    fclose(combined_key_file);
+    return -2;
+  }
+  FILE *node_key_file;
+  unsigned char buffer[crypto_core_ristretto255_BYTES + 1];
+  size_t bytes_read = 0;
+  struct PublicKey combkey;
+  memset(combkey.val, 0, sizeof combkey.val);
+  struct PublicKey tempkey;
+  memset(tempkey.val, 0, sizeof tempkey.val);
+  struct PublicKey nodekey;
+  // Add together all of the node keys as points on Ristretto255
+  for (int file_it=0; file_it<ncount; file_it++) {
+    if (read_pubkey(&nodekey, node_fns[file_it])==0) {
+      if (crypto_core_ristretto255_add(combkey.val, tempkey.val, nodekey.val)!=0) {
+        debug_print("ERROR: problem adding %s to combined key.\nAborting\n", node_fns[file_it]);
+        return -4;
+      }
+      memcpy(tempkey.val, combkey.val, crypto_core_ristretto255_BYTES);
+    } else {
+      debug_print("ERROR: could not open %s for reading.\n", node_fns[file_it]);
+      return -10;
+    }
+  }
+
+  // writing combined public key now
+  size_t bytes_written = 0;
+  if (write_pubkey(combkey, combined_fn) == 0) {
+    // Do nothing
+  } else {
+    return -1;
+  }
+  return 0;
+}
+
+// Generates a combined private key by adding together
+// the list of node private keys
+int combine_private_keys(char *combined_fn, char **node_fns, const int ncount) {
+  FILE *combined_key_file = fopen(combined_fn, "rb");
+  if (combined_key_file) {
+    debug_print("ERROR: %s exists.\nAborting so we don't clobber it.\n", combined_fn);
+    fclose(combined_key_file);
+    return -2;
+  }
+  FILE *node_key_file;
+  unsigned char buffer[crypto_core_ristretto255_SCALARBYTES + 1];
+  size_t bytes_read = 0;
+  struct PrivateKey combkey;
+  memset(combkey.val, 0, sizeof combkey.val);
+  struct PrivateKey tempkey;
+  memset(tempkey.val, 0, sizeof tempkey.val);
+  struct PrivateKey nodekey;
+  // Add together all of the node keys as points on Ristretto255
+  for (int file_it=0; file_it<ncount; file_it++) {
+    if (read_privkey(&nodekey, node_fns[file_it])==0) {
+      crypto_core_ristretto255_scalar_add(combkey.val, tempkey.val, nodekey.val) ;
+      memcpy(tempkey.val, combkey.val, crypto_core_ristretto255_SCALARBYTES);
+    } else {
+      debug_print("ERROR: could not open %s for reading.\n", node_fns[file_it]);
+      return -10;
+    }
+  }
+
+  // writing combined public key now
+  size_t bytes_written = 0;
+  if (write_privkey(combkey, combined_fn) == 0) {
+    // Do nothing
+  } else {
+    return -1;
+  }
+  return 0;
 }

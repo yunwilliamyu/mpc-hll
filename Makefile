@@ -1,6 +1,6 @@
 IDIR=/usr/local/lib
-CC=gcc
-CFLAGS=-I${IDIR} -lsodium
+CC=c99
+CFLAGS=-I${IDIR} -lsodium -pedantic -Wall -Wextra -Wcast-align -Wcast-qual -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wredundant-decls -Wshadow -Wsign-conversion -Wstrict-overflow=5 -Wswitch-default -Wundef -Werror -Wno-unused
 
 OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 

@@ -4,6 +4,25 @@
 //#include <CUnit/CUnit.h>
 #include <CUnit/Basic.h>
 #include "elgamal.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <time.h>
+#include <string.h>
+
+
+
+/* ******************************
+*  Suite 1 - ElGamal tests
+* ***************************** */
+int init_suite(void);
+int clean_suite(void);
+void test_roundtrip(void);
+void test_zero(void);
+void test_add(void);
+void test_private_equality(void);
+void test_private_not_equality(void);
+void test_roundtrip_rolling(void);
 
 int init_suite(void) {
   if (sodium_init() < 0) {
@@ -142,8 +161,67 @@ void test_roundtrip_rolling(void) {
   CU_ASSERT(unroll(&uct, 65, pub_key) == -1);
 }
 
+/* ******************************
+*  Suite 2 - IO tests
+* ***************************** */
+int init_suite2(void);
+int clean_suite2(void);
+void test_distributed_keygen(void);
+
+int init_suite2(void) {
+  if (sodium_init() < 0) {
+    /* Panic!  library couldn't be initialized */
+    return -1;
+  }
+  return 0;
+}
+int clean_suite2(void) {return 0; }
+
+void test_distributed_keygen(void) {
+  char tmpdir[64];
+  snprintf(tmpdir, 64, "tmp%lu-%d", (unsigned long)time(NULL), rand());
+  int ncount = 5;
+  char node_privkey_fns[ncount][128];
+  char node_pubkey_fns[ncount][128];
+
+  char *node_privkey_fns_ptrs[ncount];
+  char *node_pubkey_fns_ptrs[ncount];
+  for (int i=0; i<ncount; i++) {
+    node_privkey_fns_ptrs[i] = (node_privkey_fns[i]);
+    node_pubkey_fns_ptrs[i] = (node_pubkey_fns[i]);
+  }
+
+  //printf("%s",str);
+  CU_ASSERT(mkdir(tmpdir, 0777)==0);
+  for (int i=0; i<ncount; i++) {
+    char tmpfn[16];
+    snprintf(node_privkey_fns[i], 128, "%s/node%d.priv", tmpdir, i);
+    snprintf(node_pubkey_fns[i], 128, "%s/node%d.pub", tmpdir, i);
+    CU_ASSERT(keygen_node(node_privkey_fns[i], node_pubkey_fns[i])==0);
+  }
+  char comb_priv_fn[128];
+  snprintf(comb_priv_fn, 128, "%s/combined.priv", tmpdir);
+  char comb_pub_fn[128];
+  snprintf(comb_pub_fn, 128, "%s/combined.pub", tmpdir);
+  CU_ASSERT(combine_private_keys(comb_priv_fn, node_privkey_fns_ptrs, ncount)==0);
+  CU_ASSERT(combine_public_keys(comb_pub_fn, node_pubkey_fns_ptrs, ncount)==0);
+  struct PrivateKey comb_privkey;
+  struct PublicKey comb_pubkey;
+  CU_ASSERT(read_privkey(&comb_privkey, comb_priv_fn)==0);
+  CU_ASSERT(read_pubkey(&comb_pubkey, comb_pub_fn)==0);
+  struct PublicKey comb_pubkey2;
+  CU_ASSERT(priv2pub(&comb_pubkey2, comb_privkey) == 0);
+  CU_ASSERT(sodium_memcmp(comb_pubkey.val, comb_pubkey2.val, sizeof comb_pubkey2.val) == 0);
+  
+}
+
+
+/* ******************************
+* Actually run all the tests
+* ***************************** */
 int main() {
   CU_pSuite pSuite1 = NULL;
+  CU_pSuite pSuite2 = NULL;
 
   if (CUE_SUCCESS != CU_initialize_registry()) return CU_get_error();
 
@@ -152,14 +230,21 @@ int main() {
     CU_cleanup_registry();
     return CU_get_error();
   }
+  pSuite2 = CU_add_suite("IO_tests", init_suite2, clean_suite2);
+  if (NULL == pSuite2) {
+    CU_cleanup_registry();
+    return CU_get_error();
+  }
 
-  if (
+  if ( // Test Suite 1
       (NULL == CU_add_test(pSuite1, "Testing round trip.....", test_roundtrip)),
       (NULL == CU_add_test(pSuite1, "Testing encoding 0s.....", test_zero)),
       (NULL == CU_add_test(pSuite1, "Testing addition.....", test_add)),
       (NULL == CU_add_test(pSuite1, "Testing private equality.....", test_private_equality)),
       (NULL == CU_add_test(pSuite1, "Testing private not equality.....", test_private_not_equality)),
-      (NULL == CU_add_test(pSuite1, "Testing roundtrip rolling.....", test_roundtrip_rolling))
+      (NULL == CU_add_test(pSuite1, "Testing roundtrip rolling.....", test_roundtrip_rolling)),
+      // Test Suite 2
+      (NULL == CU_add_test(pSuite2, "Testing distributed keygen.....", test_distributed_keygen))
       ) {
     CU_cleanup_registry();
     return CU_get_error();
