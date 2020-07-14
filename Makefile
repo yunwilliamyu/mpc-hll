@@ -5,20 +5,20 @@ CFLAGS=-I${IDIR} -lsodium -pedantic -Wall -Wextra -Wcast-align -Wcast-qual -Wdis
 
 OBJS = $(patsubst src/%.c, obj/%.o, $(wildcard src/*.c))
 
-PROG=main keygen combine-keys
+PROG=main keygen combine-keys encrypt_val
 BIN_LIST=$(addprefix $(BIN), $(PROG))
 
 #all: ${OBJS} $(BIN_LIST)
 all: ${OBJS} ${BIN_LIST} tests/elgamal_test
 	echo "All made."
 
-${BIN_LIST}:
-	${CC} -o $@ obj/$(@F).o ${CFLAGS} obj/elgamal.o
+${BIN_LIST}: bin/%: obj/%.o obj/elgamal.o
+	${CC} -o $@ $^ ${CFLAGS}
 
-tests/elgamal_test:
-	${CC} -o $@ obj/$(@F).o ${CFLAGS} -lcunit obj/elgamal.o
+tests/elgamal_test: obj/elgamal_test.o
+	${CC} -o $@ $^ ${CFLAGS} -lcunit obj/elgamal.o
 
-obj/%.o: src/%.c
+obj/%.o: src/%.c 
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:

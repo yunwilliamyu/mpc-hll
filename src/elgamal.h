@@ -1,8 +1,11 @@
 #ifndef ELGAMAL_H
 #define ELGAMAL_H
 
-//#include <stdio.h>
+#define _GNU_SOURCE
+
+#include <stdio.h>
 #include <sodium.h>
+#include <stdlib.h>
 #include <inttypes.h>
 #include <string.h>
 #include <stdbool.h>
@@ -49,4 +52,7 @@ int keygen_node(char *private_fn, char *public_fn);
 int combine_public_keys(char *combined_fn, char **node_fns, const int ncount);
 int combine_private_keys(char *combined_fn, char **node_fns, const int ncount);
 
+int encrypt_file(char *key_fn, char *input_fn, char *output_fn);
+int read_file_to_array(unsigned char *ans, char *fn, size_t max);
+int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const int max_elem);
 #endif // ELGAMAL_H

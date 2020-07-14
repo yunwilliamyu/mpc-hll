@@ -400,3 +400,104 @@ int combine_private_keys(char *combined_fn, char **node_fns, const int ncount) {
   }
   return 0;
 }
+
+// Returns the size of the array
+// Returns negative value on error
+int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const int max_elem) {
+  int i = 0;
+  struct PlainText uval;
+  struct CipherText cval;
+  while (in[i] != 0) {
+    if (encode(&uval, in[i])!=0) {return -1;}
+    if (encrypt(&cval, uval, pubkey)!=0) { return -1;}
+    memcpy(&out[2*i*crypto_core_ristretto255_BYTES], cval.c1, crypto_core_ristretto255_BYTES );
+    memcpy(&out[(2*i+1)*crypto_core_ristretto255_BYTES], cval.c2, crypto_core_ristretto255_BYTES );
+    if (i++>max_elem) {
+      error_print("ERROR: too many elements for size of array: %i\n", i);
+      return -2;
+    }
+  }
+  return i;
+}
+
+// Reads file into array. If items were read, return the number. Return a negative number upon error.
+int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
+  FILE * fp = fopen(fn, "r");
+  char * line = NULL;
+  size_t len = 0;
+  ssize_t read;
+  intmax_t val = 0;
+  if (fp) {
+    int i = 0;
+    while ((read = getline(&line, &len, fp)) != -1) {
+      val = strtoimax(line, NULL, 10);
+      if ((val >= 1) && (val <= 64)) {
+        ans[i++] = val;
+      } else {
+        error_print("ERROR: value on line %i not a number in [1, 64].\n", i);
+        return -1;
+      }
+      if (i > (int)max) {
+        error_print("ERROR: exceeded maximum number of lines: %lu.\n", max);
+        return -1;
+      }
+    }
+    info_print("INFO: Read %i lines.\n", i);
+    fclose(fp);
+    return i;
+  } else {
+    error_print("ERROR: could not open %s for reading.\n", fn);
+    return -1;
+  }
+}
+
+int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
+  struct PublicKey pub_key;
+  int tmp;
+  unsigned int size_of_array = 0;
+  if ((tmp = read_pubkey(&pub_key, key_fn)!=0)) {return tmp; }
+  unsigned char byte_array[10000];
+  memset(byte_array, 0, sizeof byte_array);
+  tmp = read_file_to_array(byte_array, input_fn, sizeof byte_array);
+  if (tmp < 0) {
+    error_print("ERROR: could not read file into array.\n");
+    return tmp;
+  } else {
+    size_of_array = (unsigned int)tmp;
+    error_print("%i\n", tmp);
+  }
+  /*
+  for (unsigned int i=0; i<sizeof byte_array; i++) {
+    if (byte_array[i] > 0) {
+      printf("%i\n", byte_array[i]);
+    } else {
+      break;
+    }
+  }
+  */
+  unsigned char out_array[10000*crypto_core_ristretto255_SCALARBYTES];
+  if ((tmp = encrypt_array(out_array, byte_array, pub_key, sizeof byte_array) < 0)){
+    return tmp; // return error if less than 0
+  }
+  FILE *out_file = fopen(output_fn, "wb");
+  size_t bytes_written = 0;
+  if (out_file) {
+    bytes_written = fwrite(out_array, 1, crypto_core_ristretto255_BYTES*size_of_array, out_file);
+    if (bytes_written != crypto_core_ristretto255_BYTES*size_of_array) {
+      error_print("ERROR: incorrect number of bytes written to %s.\n", output_fn);
+      return -5;
+    }
+    info_print("INFO: Written %lu bytes to %s.\n", bytes_written, output_fn);
+    fclose(out_file);
+    return 0;
+  } else {
+    error_print("ERROR: could not open %s for writing.\n", output_fn);
+    return -6;
+  }
+  return 0;
+}
+
+
+
+
+
