@@ -5,22 +5,22 @@ CFLAGS=-I${IDIR} -lsodium -pedantic -Wall -Wextra -Wcast-align -Wcast-qual -Wdis
 
 OBJS = $(patsubst src/%.c, obj/%.o, $(wildcard src/*.c))
 
-PROG=main keygen-node combine-keys
+PROG=main keygen combine-keys
 BIN_LIST=$(addprefix $(BIN), $(PROG))
 
 #all: ${OBJS} $(BIN_LIST)
-all: ${OBJS} ${PROG} elgamal_test
+all: ${OBJS} ${BIN_LIST} tests/elgamal_test
 	echo "All made."
 
-${PROG}:
-	${CC} -o bin/$@ obj/$@.o ${CFLAGS} obj/elgamal.o
+${BIN_LIST}:
+	${CC} -o $@ obj/$(@F).o ${CFLAGS} obj/elgamal.o
 
-elgamal_test:
-	${CC} -o bin/$@ obj/$@.o ${CFLAGS} -lcunit obj/elgamal.o
+tests/elgamal_test:
+	${CC} -o $@ obj/$(@F).o ${CFLAGS} -lcunit obj/elgamal.o
 
 obj/%.o: src/%.c
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:
-	rm -f obj/*.o bin/*
+	rm -f obj/*.o bin/* tests/*
 	@echo "All cleaned up!"
