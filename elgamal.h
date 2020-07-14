@@ -7,9 +7,12 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define DEBUG 1
-#define debug_print(...) \
-  do { if (DEBUG) fprintf(stderr,  __VA_ARGS__); } while (0)
+#define ERROR_PRINT 1
+#define error_print(...) \
+  do { if (ERROR_PRINT) fprintf(stderr,  __VA_ARGS__); } while (0)
+#define INFO_PRINT 1
+#define info_print(...) \
+  do { if (INFO_PRINT) fprintf(stderr,  __VA_ARGS__); } while (0)
 
 struct PrivateKey { unsigned char val[crypto_core_ristretto255_SCALARBYTES]; };
 struct PublicKey { unsigned char val[crypto_core_ristretto255_BYTES]; };
