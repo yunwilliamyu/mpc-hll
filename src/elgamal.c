@@ -403,6 +403,7 @@ int combine_private_keys(char *combined_fn, char **node_fns, const int ncount) {
 
 // Returns the size of the array
 // Returns negative value on error
+// array "in" should be 0-delimited
 int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const int max_elem) {
   int i = 0;
   struct PlainText uval;
@@ -416,6 +417,22 @@ int encrypt_array(unsigned char *out, const unsigned char *in, const struct Publ
       error_print("ERROR: too many elements for size of array: %i\n", i);
       return -2;
     }
+  }
+  return i;
+}
+
+// Decrypt array
+// Returns the size of the array on success
+// Returns negative value on error
+int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const int num_elem) {
+  int i = 0;
+  struct PlainText uval;
+  struct CipherText cval;
+  for (i=0; i<num_elem; i++) {
+    memcpy(cval.c1, &enc[2*i*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    memcpy(cval.c2, &enc[(2*i+1)*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    if (decrypt(&uval, cval, privkey)!=0) {return -1; }
+    plain[i] = decode(uval);
   }
   return i;
 }

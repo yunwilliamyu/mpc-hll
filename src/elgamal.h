@@ -10,10 +10,16 @@
 #include <string.h>
 #include <stdbool.h>
 
+#ifndef ERROR_PRINT
 #define ERROR_PRINT 1
+#endif
+#ifndef INFO_PRINT
+#define INFO_PRINT 1
+#endif
+
 #define error_print(...) \
   do { if (ERROR_PRINT) fprintf(stderr,  __VA_ARGS__); } while (0)
-#define INFO_PRINT 1
+
 #define info_print(...) \
   do { if (INFO_PRINT) fprintf(stderr,  __VA_ARGS__); } while (0)
 
@@ -55,4 +61,5 @@ int combine_private_keys(char *combined_fn, char **node_fns, const int ncount);
 int encrypt_file(char *key_fn, char *input_fn, char *output_fn);
 int read_file_to_array(unsigned char *ans, char *fn, size_t max);
 int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const int max_elem);
+int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const int num_elem);
 #endif // ELGAMAL_H

@@ -10,8 +10,6 @@
 #include <time.h>
 #include <string.h>
 
-
-
 /* ******************************
 *  Suite 1 - ElGamal tests
 * ***************************** */
@@ -23,6 +21,7 @@ void test_add(void);
 void test_private_equality(void);
 void test_private_not_equality(void);
 void test_roundtrip_rolling(void);
+void test_roundtrip_array(void);
 
 int init_suite(void) {
   if (sodium_init() < 0) {
@@ -161,6 +160,33 @@ void test_roundtrip_rolling(void) {
   CU_ASSERT(unroll(&uct, 65, pub_key) == -1);
 }
 
+void test_roundtrip_array(void) {
+  struct PrivateKey priv_key;
+  generate_key(&priv_key);
+  struct PublicKey pub_key;
+  CU_ASSERT(priv2pub(&pub_key, priv_key) == 0);
+
+  unsigned char arr[128];
+  for (int i=0; i<64; i++) {arr[i] = i+1; }
+  arr[64]=0;
+  unsigned char earr[128*32];
+  int size = encrypt_array(earr, arr, pub_key, 128);
+  CU_ASSERT(size == 64);
+  unsigned char uarr[128];
+  CU_ASSERT(decrypt_array(uarr, earr, priv_key, size)==size);
+  CU_ASSERT(memcmp(uarr, arr, 64) == 0);
+/*
+  for (unsigned int i=0; i<64; i++) {
+    if (uarr[i] > 0) {
+      printf("%i\n", uarr[i]);
+    } else {
+      break;
+    }
+  }
+  */
+
+}
+
 /* ******************************
 *  Suite 2 - IO tests
 * ***************************** */
@@ -243,6 +269,7 @@ int main() {
       (NULL == CU_add_test(pSuite1, "Testing private equality.....", test_private_equality)),
       (NULL == CU_add_test(pSuite1, "Testing private not equality.....", test_private_not_equality)),
       (NULL == CU_add_test(pSuite1, "Testing roundtrip rolling.....", test_roundtrip_rolling)),
+      (NULL == CU_add_test(pSuite1, "Testing roundtrip array.....", test_roundtrip_array)),
       // Test Suite 2
       (NULL == CU_add_test(pSuite2, "Testing distributed keygen.....", test_distributed_keygen))
       ) {
