@@ -22,5 +22,5 @@ obj/%.o: src/%.c
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:
-	rm -f obj/*.o bin/* tests/*
+	rm -rf obj/*.o bin/* tests/*
 	@echo "All cleaned up!"
