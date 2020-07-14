@@ -4,7 +4,7 @@ CFLAGS=-I${IDIR} -lsodium -pedantic -Wall -Wextra -Wcast-align -Wcast-qual -Wdis
 
 OBJS = $(patsubst %.c,%.o,$(wildcard *.c))
 
-all: ${OBJS} main elgamal_test keygen-node keygen-central
+all: ${OBJS} main elgamal_test keygen-node combine-keys
 	echo "All made."
 
 main:
@@ -16,12 +16,12 @@ elgamal_test:
 keygen-node:
 	${CC} -o $@ $@.o ${CFLAGS} elgamal.o
 
-keygen-central:
+combine-keys:
 	${CC} -o $@ $@.o ${CFLAGS} elgamal.o
 
 %.o: %.c
 	${CC} ${CFLAGS} -c -o $@ $<
 
 clean:
-	rm -f ${OBJS} main elgamal_test keygen-node keygen-central
+	rm -f ${OBJS} main elgamal_test keygen-node combine-keys
 	@echo "All cleaned up!"
