@@ -10,9 +10,9 @@ An secure multi-party computation library for combining HyperLogLog union cardin
   libsodium 1.0.18+
 
 1. Directory structure
-  src/
-  obj/
-  bin/
+    src/
+    obj/
+    bin/
   
   
 
