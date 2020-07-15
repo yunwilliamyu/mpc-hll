@@ -1,6 +1,8 @@
 // ELGAMAL.C
 #include "elgamal.h"
 
+#define BUCKET_SIZE 65536
+
 /* generates a random scalar as a private elgamal key */
 int generate_key(struct PrivateKey *a) {
   crypto_core_ristretto255_scalar_random(a->val);
@@ -424,6 +426,7 @@ int encrypt_array(unsigned char *out, const unsigned char *in, const struct Publ
 // Decrypt array
 // Returns the size of the array on success
 // Returns negative value on error
+// plain must have space for num_elem + 1 (to null terminate)
 int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const int num_elem) {
   int i = 0;
   struct PlainText uval;
@@ -434,10 +437,11 @@ int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct P
     if (decrypt(&uval, cval, privkey)!=0) {return -1; }
     plain[i] = decode(uval);
   }
+  plain[num_elem] = 0;
   return i;
 }
 
-// Reads file into array. If items were read, return the number. Return a negative number upon error.
+// Reads newline separated integers in [1,64] file into array. If items were read, return the number. Return a negative number upon error.
 int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
   FILE * fp = fopen(fn, "r");
   char * line = NULL;
@@ -468,12 +472,53 @@ int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
   }
 }
 
+// Reads binary encrypted file into array, with serialized CipherText objects. Returns the number of objects read. Returns a negative number on error.
+// max is the max number of CipherTexts to try to read (i.e. dependon the size of the ans char array
+// sizeof ans = max_CipherText_num * 2 * crypto_core_ristretto255_BYTES
+int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText_num) {
+  FILE *fp = fopen(fn, "rb");
+  //char buffer[max_CipherText_num * 2 * crypto_core_ristretto255_BYTES];
+  ssize_t sizeof_ans = max_CipherText_num * 2 * crypto_core_ristretto255_BYTES;
+  size_t read;
+  ssize_t size;
+  int num_ciphertexts;
+  if (fp) {
+    int i = 0;
+    fseek (fp , 0 , SEEK_END);
+    size = ftell (fp);
+    rewind (fp);
+    if (size % (2*crypto_core_ristretto255_BYTES) != 0) {
+      error_print("ERROR: %s contains %ld bytes, which does not divide %i.\n", fn, size, 2*crypto_core_ristretto255_BYTES);
+      fclose(fp);
+      return -1;
+    } else if (size > sizeof_ans) {
+      error_print("ERROR: %s contains %ld bytes, which is larger than the buffer size: %ld.\n", fn, size, sizeof_ans);
+      fclose(fp);
+      return -1;
+    } else if (size < 0) {
+      error_print("ERROR: problems opening %s for reading.\n", fn);
+      fclose(fp);
+      return -1;
+    }
+    read = fread(ans, 1, (size_t)size, fp);
+    num_ciphertexts = read / (2*crypto_core_ristretto255_BYTES);
+    info_print("INFO: successfully read %ld bytes from %s, ~%i CipherTexts.\n", read, fn, num_ciphertexts);
+    fclose(fp);
+    return num_ciphertexts;
+  } else {
+    error_print("ERROR: could not open %s for reading.\n", fn);
+    return -1;
+  }
+
+}
+
+// Encrypts a newline delimited list of integers in [1,64] from input_fn and writes it out to output_fn, using the public key found in key_fn
 int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
   struct PublicKey pub_key;
   int tmp;
   unsigned int size_of_array = 0;
   if ((tmp = read_pubkey(&pub_key, key_fn)!=0)) {return tmp; }
-  unsigned char byte_array[10000];
+  unsigned char byte_array[BUCKET_SIZE];
   memset(byte_array, 0, sizeof byte_array);
   tmp = read_file_to_array(byte_array, input_fn, sizeof byte_array);
   if (tmp < 0) {
@@ -481,7 +526,6 @@ int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
     return tmp;
   } else {
     size_of_array = (unsigned int)tmp;
-    error_print("%i\n", tmp);
   }
   /*
   for (unsigned int i=0; i<sizeof byte_array; i++) {
@@ -492,7 +536,7 @@ int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
     }
   }
   */
-  unsigned char out_array[10000*crypto_core_ristretto255_SCALARBYTES];
+  unsigned char out_array[BUCKET_SIZE*2*crypto_core_ristretto255_BYTES];
   if ((tmp = encrypt_array(out_array, byte_array, pub_key, sizeof byte_array) < 0)){
     return tmp; // return error if less than 0
   }
@@ -514,6 +558,40 @@ int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
   return 0;
 }
 
+// Reverses the encryption from encrypt_file
+int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
+  struct PrivateKey priv_key;
+  int tmp;
+  unsigned int size_of_array = 0;
+  if ((tmp = read_privkey(&priv_key, key_fn)!=0)) {return tmp; }
+  unsigned char byte_array[BUCKET_SIZE*crypto_core_ristretto255_BYTES*2];
+  memset(byte_array, 0, sizeof byte_array);
+  tmp = read_binary_CipherText_file(byte_array, input_fn, BUCKET_SIZE);
+  if (tmp < 0) {
+    error_print("ERROR: could not read file into array.\n");
+    return tmp;
+  } else {
+    size_of_array = (unsigned int)tmp;
+  }
+  unsigned char out_array[BUCKET_SIZE];
+  if ((tmp = decrypt_array(out_array, byte_array, priv_key, BUCKET_SIZE) < 0)){
+    return tmp; // return error if less than 0
+  }
+  int num_elem = tmp;
+  FILE *out_file = fopen(output_fn, "w");
+  if (out_file) {
+    for (int i=0; i<num_elem; i++) {
+      fprintf(out_file, "%i\n", out_array[i]);
+    }
+    info_print("INFO: Written %d liness to %s.\n", num_elem, output_fn);
+    fclose(out_file);
+    return 0;
+  } else {
+    error_print("ERROR: could not open %s for writing.\n", output_fn);
+    return -6;
+  }
+  return 0;
+}
 
 
 

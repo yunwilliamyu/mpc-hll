@@ -175,16 +175,7 @@ void test_roundtrip_array(void) {
   unsigned char uarr[128];
   CU_ASSERT(decrypt_array(uarr, earr, priv_key, size)==size);
   CU_ASSERT(memcmp(uarr, arr, 64) == 0);
-/*
-  for (unsigned int i=0; i<64; i++) {
-    if (uarr[i] > 0) {
-      printf("%i\n", uarr[i]);
-    } else {
-      break;
-    }
-  }
-  */
-
+  CU_ASSERT(uarr[64]==0);
 }
 
 /* ******************************
