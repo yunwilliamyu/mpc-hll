@@ -64,7 +64,7 @@ int decrypt_file(char *key_fn, char *input_fn, char *output_fn);
 int read_file_to_array(unsigned char *ans, char *fn, size_t max);
 int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText_num);
 int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const int max_elem);
-int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const int num_elem);
+int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const unsigned int num_elem);
 
 
 #endif // ELGAMAL_H

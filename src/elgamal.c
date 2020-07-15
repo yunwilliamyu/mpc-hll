@@ -36,9 +36,14 @@ int encrypt(struct CipherText *a, const struct PlainText plain, const struct Pub
 int decrypt(struct PlainText *a, const struct CipherText x, const struct PrivateKey key) {
   unsigned char s[crypto_core_ristretto255_BYTES];
   if (crypto_scalarmult_ristretto255(s, key.val, x.c1) != 0) {
+    char y[128];
+    sodium_bin2hex(y, 128, x.c1, sizeof(x.c1));
+    error_print("\nc1: %s\n", y);
+    error_print("ERROR: Could not decrypt c1\n");
     return -1;
   }
   if (crypto_core_ristretto255_sub(a->val, x.c2, s) != 0) {
+    error_print("ERROR: Could not decrypt c2\n");
     return -1;
   }
   return 0;
@@ -427,18 +432,22 @@ int encrypt_array(unsigned char *out, const unsigned char *in, const struct Publ
 // Returns the size of the array on success
 // Returns negative value on error
 // plain must have space for num_elem + 1 (to null terminate)
-int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const int num_elem) {
-  int i = 0;
+int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const unsigned int num_elem) {
+  unsigned int i = 0;
   struct PlainText uval;
   struct CipherText cval;
   for (i=0; i<num_elem; i++) {
     memcpy(cval.c1, &enc[2*i*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
     memcpy(cval.c2, &enc[(2*i+1)*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
-    if (decrypt(&uval, cval, privkey)!=0) {return -1; }
+    if (decrypt(&uval, cval, privkey)!=0) {
+      error_print("ERROR: could not decrypt values\n");
+      return -1;
+    }
     plain[i] = decode(uval);
+    //error_print("%i\n", plain[i]);
   }
   plain[num_elem] = 0;
-  return i;
+  return (int)i;
 }
 
 // Reads newline separated integers in [1,64] file into array. If items were read, return the number. Return a negative number upon error.
@@ -543,8 +552,8 @@ int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
   FILE *out_file = fopen(output_fn, "wb");
   size_t bytes_written = 0;
   if (out_file) {
-    bytes_written = fwrite(out_array, 1, crypto_core_ristretto255_BYTES*size_of_array, out_file);
-    if (bytes_written != crypto_core_ristretto255_BYTES*size_of_array) {
+    bytes_written = fwrite(out_array, 1, crypto_core_ristretto255_BYTES*2*size_of_array, out_file);
+    if (bytes_written != crypto_core_ristretto255_BYTES*2*size_of_array) {
       error_print("ERROR: incorrect number of bytes written to %s.\n", output_fn);
       return -5;
     }
@@ -574,7 +583,7 @@ int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
     size_of_array = (unsigned int)tmp;
   }
   unsigned char out_array[BUCKET_SIZE];
-  if ((tmp = decrypt_array(out_array, byte_array, priv_key, BUCKET_SIZE) < 0)){
+  if ((tmp = decrypt_array(out_array, byte_array, priv_key, size_of_array))<0){
     return tmp; // return error if less than 0
   }
   int num_elem = tmp;
@@ -583,14 +592,13 @@ int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
     for (int i=0; i<num_elem; i++) {
       fprintf(out_file, "%i\n", out_array[i]);
     }
-    info_print("INFO: Written %d liness to %s.\n", num_elem, output_fn);
+    info_print("INFO: Written %d lines to %s.\n", num_elem, output_fn);
     fclose(out_file);
     return 0;
   } else {
     error_print("ERROR: could not open %s for writing.\n", output_fn);
     return -6;
   }
-  return 0;
 }
 
 
