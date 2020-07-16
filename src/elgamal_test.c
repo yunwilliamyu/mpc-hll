@@ -173,7 +173,7 @@ void test_roundtrip_array(void) {
   int size = encrypt_array(earr, arr, pub_key, 128);
   CU_ASSERT(size == 64);
   unsigned char uarr[128];
-  CU_ASSERT(decrypt_array(uarr, earr, priv_key, size)==size);
+  CU_ASSERT(decrypt_array(uarr, earr, priv_key, (unsigned int)size)==size);
   CU_ASSERT(memcmp(uarr, arr, 64) == 0);
   CU_ASSERT(uarr[64]==0);
 }

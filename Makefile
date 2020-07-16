@@ -21,6 +21,13 @@ tests/elgamal_test: obj/elgamal_test.o
 obj/%.o: src/%.c 
 	${CC} ${CFLAGS} -c -o $@ $<
 
+test: all
+	cd tests/; \
+	./elgamal_test; \
+	./command_line_test.sh;
+
+
 clean:
-	rm -rf obj/*.o bin/* tests/*
+	rm -rf obj/*.o ${BIN_LIST} tests/tmp* tests/elgamal_test
+	cd tests/; ./command_line_cleanup.sh
 	@echo "All cleaned up!"
