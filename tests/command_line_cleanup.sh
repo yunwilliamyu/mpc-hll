@@ -1,2 +1,2 @@
 #!/bin/bash
-rm counting* applesauce* out.bin
+rm array*  command_test*

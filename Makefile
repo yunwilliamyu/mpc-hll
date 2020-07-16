@@ -15,10 +15,10 @@ all: ${OBJS} ${BIN_LIST} tests/elgamal_test
 ${BIN_LIST}: bin/%: obj/%.o obj/elgamal.o
 	${CC} -o $@ $^ ${CFLAGS}
 
-tests/elgamal_test: obj/elgamal_test.o
+tests/elgamal_test: obj/elgamal_test.o src/elgamal.h
 	${CC} -o $@ $^ ${CFLAGS} -lcunit obj/elgamal.o 
 
-obj/%.o: src/%.c 
+obj/%.o: src/%.c  src/elgamal.h
 	${CC} ${CFLAGS} -c -o $@ $<
 
 check: all
