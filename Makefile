@@ -21,7 +21,7 @@ tests/elgamal_test: obj/elgamal_test.o
 obj/%.o: src/%.c 
 	${CC} ${CFLAGS} -c -o $@ $<
 
-test: all
+check: all
 	cd tests/; \
 	./elgamal_test; \
 	./command_line_test.sh;
