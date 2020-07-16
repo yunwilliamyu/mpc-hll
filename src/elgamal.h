@@ -2,6 +2,7 @@
 #define ELGAMAL_H
 
 #define _GNU_SOURCE
+#define BUCKET_SIZE 65536
 
 #include <stdio.h>
 #include <sodium.h>

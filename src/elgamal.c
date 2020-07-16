@@ -1,7 +1,6 @@
 // ELGAMAL.C
 #include "elgamal.h"
 
-#define BUCKET_SIZE 65536
 
 /* generates a random scalar as a private elgamal key */
 int generate_key(struct PrivateKey *a) {
