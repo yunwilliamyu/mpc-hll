@@ -1,8 +1,8 @@
 #!/bin/bash
 
 rm counting.txt
-for (( i = 1; i < 65; i++ )); do
-  echo $i >> counting.txt
+for (( i = 1; i < 10002; i++ )); do
+  echo $(((i % 64)+1)) >> counting.txt
 done
 
 ../bin/keygen applesauce.priv applesauce.pub
