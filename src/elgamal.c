@@ -41,8 +41,27 @@ int decrypt(struct PlainText *a, const struct CipherText x, const struct Private
     error_print("ERROR: Could not decrypt c1\n");
     return -1;
   }
+  // a->val = x.c2 - s
   if (crypto_core_ristretto255_sub(a->val, x.c2, s) != 0) {
     error_print("ERROR: Could not decrypt c2\n");
+    return -1;
+  }
+  return 0;
+}
+
+int decrypt_with_sec(struct PlainText *a, const struct CipherText x, const struct SharedSecret s) {
+  if (crypto_core_ristretto255_sub(a->val, x.c2, s.val) != 0) {
+    error_print("ERROR: Could not decrypt c2\n");
+    return -1;
+  }
+  return 0;
+}
+
+// Generates only the shared secret half of decryption
+// These shared secrets can then be combined to do distributed decryption
+int shared_secret(struct SharedSecret *s, const struct CipherText x, const struct PrivateKey key) {
+  if (crypto_scalarmult_ristretto255(s->val, key.val, x.c1) != 0) {
+    error_print("ERROR: Could not generate shared secret\n");
     return -1;
   }
   return 0;
@@ -132,37 +151,37 @@ int private_equality_test(struct CipherText *a, const struct CipherText x, const
 /* Unrolls an int x=4 into an encrypted array [r, r, r, r, 0, 0, ..., 0], where
  *   each r is a random value
  *   x is the number of r's
- *   the length of the array = 64
+ *   the length of the array = BUCKET_MAX
  *
  * Puts the result into "a", and returns 0 on success, -1 on failure
  * */
-int unroll(struct UnrolledCipherText64 *a, const unsigned char x, const struct PublicKey pub_key) {
+int unroll(struct UnrolledCipherText *a, const unsigned char x, const struct PublicKey pub_key) {
   struct PlainText tmp_plain;
-  // Can only encode values from 1 to 64
-  if (x > 64) {return -1; }
-  if (x == 0 ) { return -1; }
+  // Can only encode values from 1 to BUCKET_MAX
+  if (x > BUCKET_MAX) {return -1; }
+  //if (x == 0 ) { return -1; }
   for (int i=0; i<x; i++) {
     crypto_core_ristretto255_random(tmp_plain.val);
     if (encrypt( &(a->arr[i]), tmp_plain, pub_key) != 0) {return -1; }
   }
-  for (int i=x; i<64; i++) {
+  for (int i=x; i<BUCKET_MAX; i++) {
     if (encode(&tmp_plain, 0) != -1) {return -1; }
     if (encrypt( &(a->arr[i]), tmp_plain, pub_key) != 0) {return -1; }
   }
   return 0;
 }
 
-/* Rerolls and decrypts an UnrolledCipherText64 back into an integer from 1 to 64 */
-int reroll(unsigned char *a, const struct UnrolledCipherText64 uct, const struct PrivateKey priv_key) {
+/* Rerolls and decrypts an UnrolledCipherText back into an integer from 0 to BUCKET_MAX */
+int reroll(unsigned char *a, const struct UnrolledCipherText uct, const struct PrivateKey priv_key) {
   struct PlainText tmp_plain;
-  for (int i=0; i<64; i++) {
+  for (int i=0; i<BUCKET_MAX; i++) {
     if (decrypt(&tmp_plain, uct.arr[i], priv_key)!=0) {return -1;}
     if (decode_equal(tmp_plain, 0)==0) {
       *a = i;
       return 0;
     }
   }
-  *a = 64;
+  *a = BUCKET_MAX;
   return 0;
 }
 
@@ -404,27 +423,29 @@ int combine_private_keys(char *combined_fn, char **node_fns, const int ncount) {
   } else {
     return -1;
   }
-  return 0;
-}
+  return 0; }
 
-// Returns the size of the array
-// Returns negative value on error
-// array "in" should be 0-delimited
-int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const int max_elem) {
-  int i = 0;
-  struct PlainText uval;
-  struct CipherText cval;
-  while (in[i] != 0) {
-    if (encode(&uval, in[i])!=0) {return -1;}
-    if (encrypt(&cval, uval, pubkey)!=0) { return -1;}
-    memcpy(&out[2*i*crypto_core_ristretto255_BYTES], cval.c1, crypto_core_ristretto255_BYTES );
-    memcpy(&out[(2*i+1)*crypto_core_ristretto255_BYTES], cval.c2, crypto_core_ristretto255_BYTES );
+// Returns the size of the array in UnrolledCipherTexts
+// Returns negative value on error 
+// array "in" should be (-1)-delimited (alternately 255-delimited)
+// max_elem is in units of UnrolledCipherTexts
+int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const unsigned int max_elem) {
+  unsigned int i = 0;
+  struct UnrolledCipherText uval;
+  //struct CipherText cval;
+  while (in[i] != 255) {
+    //if (encode(&uval, in[i])!=0) {return -1;}
+    //if (encrypt(&cval, uval, pubkey)!=0) { return -1;}
+    //memcpy(&out[2*i*crypto_core_ristretto255_BYTES], cval.c1, crypto_core_ristretto255_BYTES );
+    //memcpy(&out[(2*i+1)*crypto_core_ristretto255_BYTES], cval.c2, crypto_core_ristretto255_BYTES );
+    if (unroll(&uval, in[i], pubkey)!=0) { return -1;}
+    memcpy(&out[i*(sizeof uval.arr)], uval.arr, sizeof uval.arr);
     if (i++>max_elem) {
       error_print("ERROR: too many elements for size of array: %i\n", i);
       return -2;
     }
   }
-  return i;
+  return (int)i;
 }
 
 // Decrypt array
@@ -433,23 +454,30 @@ int encrypt_array(unsigned char *out, const unsigned char *in, const struct Publ
 // plain must have space for num_elem + 1 (to null terminate)
 int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const unsigned int num_elem) {
   unsigned int i = 0;
-  struct PlainText uval;
-  struct CipherText cval;
+  //struct PlainText uval;
+  //struct CipherText cval;
+  unsigned char x;
+  struct UnrolledCipherText uval;
   for (i=0; i<num_elem; i++) {
-    memcpy(cval.c1, &enc[2*i*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
-    memcpy(cval.c2, &enc[(2*i+1)*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
-    if (decrypt(&uval, cval, privkey)!=0) {
+    //memcpy(cval.c1, &enc[2*i*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    //memcpy(cval.c2, &enc[(2*i+1)*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    memcpy(uval.arr, &enc[i*(sizeof uval.arr)], sizeof uval.arr);
+    if (reroll(&x, uval, privkey)!=0) {
       error_print("ERROR: could not decrypt values\n");
       return -1;
     }
-    plain[i] = decode(uval);
+    plain[i] = x;
     //error_print("%i\n", plain[i]);
   }
   plain[num_elem] = 0;
-  return (int)i;
+  return (int)num_elem;
 }
 
-// Reads newline separated integers in [1,64] file into array. If items were read, return the number. Return a negative number upon error.
+// Merge encrypted HLL arrays corresponding to CipherTexts
+// 
+
+// Reads newline separated integers in [0,BUCKET_MAX] file into array. If items were read, return the number. Return a negative number upon error.
+// max is the size of the ans buffer
 int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
   FILE * fp = fopen(fn, "r");
   char * line = NULL;
@@ -460,10 +488,10 @@ int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
     int i = 0;
     while ((read = getline(&line, &len, fp)) != -1) {
       val = strtoimax(line, NULL, 10);
-      if ((val >= 1) && (val <= 64)) {
+      if ((val >= 0) && (val <= BUCKET_MAX)) {
         ans[i++] = val;
       } else {
-        error_print("ERROR: value on line %i not a number in [1, 64].\n", i);
+        error_print("ERROR: value on line %i not a number in [1, BUCKET_MAX].\n", i);
         return -1;
       }
       if (i > (int)max) {
@@ -473,6 +501,7 @@ int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
     }
     info_print("INFO: Read %i lines.\n", i);
     fclose(fp);
+    ans[i] = 255;
     return i;
   } else {
     error_print("ERROR: could not open %s for reading.\n", fn);
@@ -486,17 +515,18 @@ int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
 int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText_num) {
   FILE *fp = fopen(fn, "rb");
   //char buffer[max_CipherText_num * 2 * crypto_core_ristretto255_BYTES];
-  ssize_t sizeof_ans = max_CipherText_num * 2 * crypto_core_ristretto255_BYTES;
-  size_t read;
+  unsigned int ciphertext_size = sizeof (((struct UnrolledCipherText*)0)->arr);
+  ssize_t sizeof_ans = max_CipherText_num * (int)ciphertext_size;
   ssize_t size;
+  size_t read;
   int num_ciphertexts;
   if (fp) {
-    int i = 0;
+    //int i = 0;
     fseek (fp , 0 , SEEK_END);
     size = ftell (fp);
     rewind (fp);
-    if (size % (2*crypto_core_ristretto255_BYTES) != 0) {
-      error_print("ERROR: %s contains %ld bytes, which does not divide %i.\n", fn, size, 2*crypto_core_ristretto255_BYTES);
+    if (size % ciphertext_size != 0) {
+      error_print("ERROR: %s contains %ld bytes, which does not divide %i.\n", fn, size, ciphertext_size);
       fclose(fp);
       return -1;
     } else if (size > sizeof_ans) {
@@ -509,7 +539,7 @@ int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText
       return -1;
     }
     read = fread(ans, 1, (size_t)size, fp);
-    num_ciphertexts = read / (2*crypto_core_ristretto255_BYTES);
+    num_ciphertexts = read / ciphertext_size ;
     info_print("INFO: successfully read %ld bytes from %s, ~%i CipherTexts.\n", read, fn, num_ciphertexts);
     fclose(fp);
     return num_ciphertexts;
@@ -520,70 +550,85 @@ int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText
 
 }
 
-// Encrypts a newline delimited list of integers in [1,64] from input_fn and writes it out to output_fn, using the public key found in key_fn
+// Encrypts a newline delimited list of integers in [1,BUCKET_MAX] from input_fn and writes it out to output_fn, using the public key found in key_fn
+//
+// Attention: GOTO used for cleanup
 int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
+  unsigned int ciphertext_size = sizeof (((struct UnrolledCipherText*)0)->arr);
+  int return_val = 0;
   struct PublicKey pub_key;
-  int tmp;
   unsigned int size_of_array = 0;
-  if ((tmp = read_pubkey(&pub_key, key_fn)!=0)) {return tmp; }
-  unsigned char byte_array[BUCKET_SIZE];
+  if (read_pubkey(&pub_key, key_fn)!=0) {return_val = -1; goto cleanup; }
+  unsigned char byte_array[BUCKET_NUM];
   memset(byte_array, 0, sizeof byte_array);
-  tmp = read_file_to_array(byte_array, input_fn, sizeof byte_array);
+  int tmp = read_file_to_array(byte_array, input_fn, sizeof byte_array);
   if (tmp < 0) {
     error_print("ERROR: could not read file into array.\n");
-    return tmp;
+    return_val = tmp;
+    goto cleanup;
   } else {
     size_of_array = (unsigned int)tmp;
   }
-  /*
-  for (unsigned int i=0; i<sizeof byte_array; i++) {
-    if (byte_array[i] > 0) {
-      printf("%i\n", byte_array[i]);
-    } else {
-      break;
-    }
-  }
-  */
-  unsigned char out_array[BUCKET_SIZE*2*crypto_core_ristretto255_BYTES];
+  unsigned char *out_array;
+  unsigned int size_of_out_array = size_of_array*ciphertext_size;
+  info_print("INFO: allocating %u bytes\n", size_of_out_array);
+  out_array = (unsigned char *)malloc(size_of_out_array);
   if ((tmp = encrypt_array(out_array, byte_array, pub_key, sizeof byte_array) < 0)){
-    return tmp; // return error if less than 0
+    error_print("ERROR: could not encrypt array.\n");
+    return_val = tmp;
+    goto cleanup;
   }
   FILE *out_file = fopen(output_fn, "wb");
   size_t bytes_written = 0;
   if (out_file) {
-    bytes_written = fwrite(out_array, 1, crypto_core_ristretto255_BYTES*2*size_of_array, out_file);
-    if (bytes_written != crypto_core_ristretto255_BYTES*2*size_of_array) {
+    bytes_written = fwrite(out_array, 1, size_of_out_array, out_file);
+    if (bytes_written != size_of_out_array) {
       error_print("ERROR: incorrect number of bytes written to %s.\n", output_fn);
-      return -5;
+      return_val = -5;
+      goto cleanup;
     }
     info_print("INFO: Written %lu bytes to %s.\n", bytes_written, output_fn);
     fclose(out_file);
-    return 0;
+    return_val = 0;
+    goto cleanup;
   } else {
     error_print("ERROR: could not open %s for writing.\n", output_fn);
-    return -6;
+    return_val = -6;
+    goto cleanup;
   }
-  return 0;
+
+  cleanup:
+  if (out_array != NULL) {
+    free(out_array);
+  }
+  return return_val;
+
 }
 
 // Reverses the encryption from encrypt_file
 int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
+  int return_val = 0;
+  unsigned int ciphertext_size = sizeof (((struct UnrolledCipherText*)0)->arr);
   struct PrivateKey priv_key;
   int tmp;
   unsigned int size_of_array = 0;
   if ((tmp = read_privkey(&priv_key, key_fn)!=0)) {return tmp; }
-  unsigned char byte_array[BUCKET_SIZE*crypto_core_ristretto255_BYTES*2];
-  memset(byte_array, 0, sizeof byte_array);
-  tmp = read_binary_CipherText_file(byte_array, input_fn, BUCKET_SIZE);
+  // unsigned char byte_array[BUCKET_NUM*crypto_core_ristretto255_BYTES*2];
+  unsigned int max_byte_array_mem = BUCKET_NUM*ciphertext_size;
+  unsigned char *byte_array = malloc(max_byte_array_mem);
+  memset(byte_array, 0, max_byte_array_mem);
+  tmp = read_binary_CipherText_file(byte_array, input_fn, BUCKET_NUM);
   if (tmp < 0) {
     error_print("ERROR: could not read file into array.\n");
-    return tmp;
+    return_val = tmp;
+    goto cleanup;
   } else {
     size_of_array = (unsigned int)tmp;
   }
-  unsigned char out_array[BUCKET_SIZE];
+  unsigned char out_array[BUCKET_NUM];
   if ((tmp = decrypt_array(out_array, byte_array, priv_key, size_of_array))<0){
-    return tmp; // return error if less than 0
+    return_val = tmp; 
+    goto cleanup;
   }
   int num_elem = tmp;
   FILE *out_file = fopen(output_fn, "w");
@@ -593,13 +638,114 @@ int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
     }
     info_print("INFO: Written %d lines to %s.\n", num_elem, output_fn);
     fclose(out_file);
-    return 0;
+    return_val = 0;
+    goto cleanup;
   } else {
     error_print("ERROR: could not open %s for writing.\n", output_fn);
-    return -6;
+    return_val = -6;
+    goto cleanup;
   }
+
+  cleanup:
+  if (byte_array != NULL) {
+    free(byte_array);
+  }
+  return return_val;
 }
 
+// a1 and a2 are byte arrays of concatenated CipherTexts
+int add_all_ciphertexts(unsigned char *a1, const unsigned char *a2, const int num_elem) {
+  struct CipherText x;
+  struct CipherText y;
+  struct CipherText z;
+  for (int i=0; i<num_elem; i++) {
+    memcpy(x.c1, &a1[2*i*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    memcpy(x.c2, &a1[(2*i+1)*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    memcpy(y.c1, &a2[2*i*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    memcpy(y.c2, &a2[(2*i+1)*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    if (add_ciphertext(&z, x, y)!=0) {return -1;}
+    memcpy(&a1[2*i*crypto_core_ristretto255_BYTES], z.c1, crypto_core_ristretto255_BYTES);
+    memcpy(&a1[(2*i+1)*crypto_core_ristretto255_BYTES], z.c2, crypto_core_ristretto255_BYTES);
+  }
+  return 0;
+}
 
+// a1 and a2 are byte arrays of concatenated UnrolledCipherTexts
+int array_max_in_place(unsigned char *a1, const unsigned char *a2, const int num_array_elements) {
+  return add_all_ciphertexts(a1, a2, num_array_elements*BUCKET_MAX);
+}
 
+// Adds together all ciphertexts found in fns, and puts output in combined_fn
+// ncount = number of ciphertexts
+int combine_binary_CipherText_files(char *combined_fn, char **fns, const int ncount) {
+  unsigned int ciphertext_size = sizeof (((struct UnrolledCipherText*)0)->arr);
+  FILE *combined_file = fopen(combined_fn, "rb");
+  if (combined_file) {
+    error_print("ERROR: %s exists.\nAborting so we don't clobber it.\n", combined_fn);
+    fclose(combined_file);
+    return -2;
+  }
+
+  ssize_t size;
+  FILE *fp = fopen(fns[0], "rb");
+  if (fp) {
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+    fclose(fp);
+  } else {
+    error_print("ERROR: problems opening %s for reading.\n", fns[0]);
+    return -1;
+  }
+  if (size < 0) {
+    error_print("ERROR: problems seeking end of %s.\n", fns[0]);
+    return -1;
+  } else if (size % ciphertext_size != 0) {
+    error_print("ERROR: %s contains %ld bytes, which does not divide %i.\n", fns[0], size, ciphertext_size);
+    return -1;
+  }
+  unsigned int num_ciphertext = size / ciphertext_size;
+
+  int return_val = 0;
+  //unsigned char buffer[crypto_core_ristretto255_BYTES + 1];
+  unsigned char *ans;
+  ans = calloc((size_t)size, 1);
+  unsigned char *buffer;
+  buffer = calloc((size_t)size, 1);
+
+  for (int file_it=0; file_it<ncount; file_it++) {
+    if (read_binary_CipherText_file(buffer, fns[file_it], (int)num_ciphertext)==(int)num_ciphertext) {
+      if (array_max_in_place(ans, buffer, (int)num_ciphertext)!=0) {
+        return_val = -1;
+        goto cleanup;
+      }
+    } else {
+      error_print("ERROR: %s is not the right size\n", fns[file_it]);
+      return_val = -1;
+      goto cleanup;
+    }
+  }
+
+  // writing combined buffer now
+
+  size_t bytes_written;
+  combined_file = fopen(combined_fn, "wb");
+  if (combined_file) {
+    bytes_written = fwrite(ans, 1, (size_t)size, combined_file);
+    if (bytes_written != (size_t)size) {
+      error_print("ERROR: incorrect number of bytes written to %s.\n", combined_fn);
+      return_val = -1;
+      goto cleanup;
+    }
+  } else {
+    error_print("ERROR: problem writing %s.\n", combined_fn);
+    return_val = -1;
+    goto cleanup;
+  }
+  info_print("INFO: successfully written to %s.\n", combined_fn);
+
+  cleanup:
+  free(ans);
+  free(buffer);
+  return return_val;
+}
 

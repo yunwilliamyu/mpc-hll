@@ -2,7 +2,8 @@
 #define ELGAMAL_H
 
 #define _GNU_SOURCE
-#define BUCKET_SIZE 65536
+#define BUCKET_NUM 65536
+#define BUCKET_MAX 32
 
 #include <stdio.h>
 #include <sodium.h>
@@ -30,23 +31,28 @@ struct CipherText {
   unsigned char c1[crypto_core_ristretto255_BYTES];
   unsigned char c2[crypto_core_ristretto255_BYTES]; 
 };
+struct SharedSecret {
+  unsigned char val[crypto_core_ristretto255_BYTES];
+};
 struct PlainText {
   unsigned char val[crypto_core_ristretto255_BYTES];
 };
-struct UnrolledCipherText64 {
-  struct CipherText arr[64];
+struct UnrolledCipherText {
+  struct CipherText arr[BUCKET_MAX];
 };
 
 int generate_key(struct PrivateKey *a);
 int priv2pub(struct PublicKey *a, const struct PrivateKey priv);
 int encrypt(struct CipherText *a, const struct PlainText plain, const struct PublicKey pub);
 int decrypt(struct PlainText *a, const struct CipherText x, const struct PrivateKey key);
+int shared_secret(struct SharedSecret *s, const struct CipherText x, const struct PrivateKey key);
+int decrypt_with_sec(struct PlainText *a, const struct CipherText x, const struct SharedSecret s);
 int encode(struct PlainText *a, const unsigned int message);
 unsigned char decode(const struct PlainText x);
 int decode_equal(const struct PlainText x, const unsigned int y);
 int private_equality_test(struct CipherText *a, const struct CipherText x, const struct CipherText y);
-int unroll(struct UnrolledCipherText64 *a, const unsigned char x, const struct PublicKey pub_key);
-int reroll(unsigned char *a, const struct UnrolledCipherText64 uct, const struct PrivateKey priv_key);
+int unroll(struct UnrolledCipherText *a, const unsigned char x, const struct PublicKey pub_key);
+int reroll(unsigned char *a, const struct UnrolledCipherText uct, const struct PrivateKey priv_key);
 int read_pubkey(struct PublicKey *a, const char *fn);
 int write_pubkey(const struct PublicKey pubkey, const char *fn);
 int read_privkey(struct PrivateKey *a, const char *fn);
@@ -64,8 +70,12 @@ int decrypt_file(char *key_fn, char *input_fn, char *output_fn);
 
 int read_file_to_array(unsigned char *ans, char *fn, size_t max);
 int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText_num);
-int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const int max_elem);
+int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const unsigned int max_elem);
 int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const unsigned int num_elem);
+
+int add_all_ciphertexts(unsigned char *a1, const unsigned char *a2, const int num_ciphertexts);
+int array_max_in_place(unsigned char *a1, const unsigned char *a2, const int num_array_elements);
+int combine_binary_CipherText_files(char *combined_fn, char **fns, const int ncount);
 
 
 #endif // ELGAMAL_H

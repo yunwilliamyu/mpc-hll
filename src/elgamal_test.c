@@ -22,6 +22,7 @@ void test_private_equality(void);
 void test_private_not_equality(void);
 void test_roundtrip_rolling(void);
 void test_roundtrip_array(void);
+void test_array_max(void);
 
 int init_suite(void) {
   if (sodium_init() < 0) {
@@ -147,35 +148,76 @@ void test_roundtrip_rolling(void) {
   struct PublicKey pub_key;
   CU_ASSERT(priv2pub(&pub_key, priv_key) == 0);
 
-  struct UnrolledCipherText64 uct;
+  struct UnrolledCipherText uct;
   unsigned char x = 0;
-  for (int i = 1; i<=64; i++ ) {
+  for (int i = 0; i<=BUCKET_MAX; i++ ) {
     CU_ASSERT(unroll(&uct, i, pub_key) == 0);
     CU_ASSERT(reroll(&x, uct, priv_key) == 0);
     CU_ASSERT(x == i);
-    //printf("\n%i\n", x);
+    //printf("\n%i:%i\n", i, x);
   }
   // Test out of bounds
-  CU_ASSERT(unroll(&uct, 0, pub_key) == -1);
+  //CU_ASSERT(unroll(&uct, 0, pub_key) == -1);
   CU_ASSERT(unroll(&uct, 65, pub_key) == -1);
 }
 
 void test_roundtrip_array(void) {
+  unsigned int num = BUCKET_MAX * 2;
   struct PrivateKey priv_key;
   generate_key(&priv_key);
   struct PublicKey pub_key;
   CU_ASSERT(priv2pub(&pub_key, priv_key) == 0);
 
-  unsigned char arr[128];
-  for (int i=0; i<64; i++) {arr[i] = i+1; }
-  arr[64]=0;
-  unsigned char earr[128*32];
-  int size = encrypt_array(earr, arr, pub_key, 128);
-  CU_ASSERT(size == 64);
-  unsigned char uarr[128];
+  unsigned char arr[num+1];
+  for (unsigned int i=0; i<num; i++) {arr[i] = i % BUCKET_MAX; }
+  arr[num-1]=BUCKET_MAX;
+  arr[num]=255;
+  unsigned char earr[(num)*(sizeof (((struct UnrolledCipherText*)0)->arr))];
+  //printf("\n%lu\n", sizeof earr);
+  int size = encrypt_array(earr, arr, pub_key, num);
+  CU_ASSERT(size == (int)num);
+  //printf("\n%i:%i\n", size, (int)num);
+  unsigned char uarr[num+1];
   CU_ASSERT(decrypt_array(uarr, earr, priv_key, (unsigned int)size)==size);
-  CU_ASSERT(memcmp(uarr, arr, 64) == 0);
-  CU_ASSERT(uarr[64]==0);
+  CU_ASSERT(memcmp(uarr, arr, num) == 0);
+  CU_ASSERT(uarr[num]==0);
+}
+
+void test_array_max(void) {
+  struct PrivateKey priv_key;
+  generate_key(&priv_key);
+  struct PublicKey pub_key;
+  CU_ASSERT(priv2pub(&pub_key, priv_key) == 0);
+
+  unsigned int num = BUCKET_MAX * 2;
+  unsigned char arr[num+1];
+  for (unsigned int i=0; i<num; i++) {arr[i] = i % (BUCKET_MAX+1); }
+  arr[num]=255;
+  unsigned char earr[(num)*(sizeof (((struct UnrolledCipherText*)0)->arr))];
+  int size = encrypt_array(earr, arr, pub_key, num);
+  CU_ASSERT(size == (int)num);
+
+  unsigned char arr2[num+1];
+  for (unsigned int i=0; i<num; i++) {arr2[i] = (i+5) % (BUCKET_MAX+1); }
+  arr2[num]=255;
+  unsigned char earr2[(num)*(sizeof (((struct UnrolledCipherText*)0)->arr))];
+  int size2 = encrypt_array(earr2, arr2, pub_key, num);
+  CU_ASSERT(size2 == (int)num);
+
+  unsigned char arr3[num+1];
+  for (unsigned int i=0; i<num; i++) {arr3[i] = arr[i] > arr2[i] ? arr[i] : arr2[i];}
+  unsigned char earr3[(num)*(sizeof (((struct UnrolledCipherText*)0)->arr))];
+  //int size3 = encrypt_array(earr3, arr3, pub_key, num);
+  //CU_ASSERT(size3 == (int)num);
+  CU_ASSERT(array_max_in_place(earr, earr2, (int)num) == 0);
+  memcpy(earr3, earr, sizeof earr3);
+
+  unsigned char uarr[num+1];
+  CU_ASSERT(decrypt_array(uarr, earr3, priv_key, (unsigned int)size)==size);
+  CU_ASSERT(memcmp(uarr, arr3, num) == 0);
+  CU_ASSERT(uarr[num]==0);
+
+  
 }
 
 /* ******************************
@@ -261,6 +303,7 @@ int main() {
       (NULL == CU_add_test(pSuite1, "Testing private not equality.....", test_private_not_equality)),
       (NULL == CU_add_test(pSuite1, "Testing roundtrip rolling.....", test_roundtrip_rolling)),
       (NULL == CU_add_test(pSuite1, "Testing roundtrip array.....", test_roundtrip_array)),
+      (NULL == CU_add_test(pSuite1, "Testing array max.....", test_array_max)),
       // Test Suite 2
       (NULL == CU_add_test(pSuite2, "Testing distributed keygen.....", test_distributed_keygen))
       ) {

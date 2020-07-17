@@ -7,13 +7,16 @@ int main( int argc, char *argv[]) {
     printf(
       "Usage:\n"
       "  %s public.key input.txt output.bin\n\n"
-      "Encrypts a newline delimited list of integers in [1,64]\n"
-      , argv[0]);
+      "Encrypts a newline delimited list of integers in [0,%i]\n"
+      , argv[0], BUCKET_MAX);
     return 1;
   }
   if (sodium_init() < 0) {
     /* Panic!  library couldn't be initialized */
     exit(-1);
   }
-  return encrypt_file(argv[1], argv[2], argv[3]);
+  int result;
+  result = encrypt_file(argv[1], argv[2], argv[3]);
+  //result = encrypt_file("c", "b", "a");
+  return result;
 }
