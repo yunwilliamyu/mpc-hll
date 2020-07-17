@@ -2,13 +2,11 @@
 #include "elgamal.h"
 
 
-/* generates a random scalar as a private elgamal key */
 int generate_key(struct PrivateKey *a) {
   crypto_core_ristretto255_scalar_random(a->val);
   return 0;
 }
 
-/* generates a public elgamal key from a private key by taking g^priv.val */
 int priv2pub(struct PublicKey *a, const struct PrivateKey priv) {
   if (crypto_scalarmult_ristretto255_base(a->val, priv.val) != 0) {
     return -1;
@@ -16,7 +14,6 @@ int priv2pub(struct PublicKey *a, const struct PrivateKey priv) {
   return 0;
 }
 
-/* performs elgamal encryption */
 int encrypt(struct CipherText *a, const struct PlainText plain, const struct PublicKey pub) {
   unsigned char y[crypto_core_ristretto255_SCALARBYTES];
   crypto_core_ristretto255_scalar_random(y);
@@ -31,7 +28,6 @@ int encrypt(struct CipherText *a, const struct PlainText plain, const struct Pub
   return 0;
 }
 
-/* decrypts elgamal encryption */
 int decrypt(struct PlainText *a, const struct CipherText x, const struct PrivateKey key) {
   unsigned char s[crypto_core_ristretto255_BYTES];
   if (crypto_scalarmult_ristretto255(s, key.val, x.c1) != 0) {
@@ -57,8 +53,6 @@ int decrypt_with_sec(struct PlainText *a, const struct CipherText x, const struc
   return 0;
 }
 
-// Generates only the shared secret half of decryption
-// These shared secrets can then be combined to do distributed decryption
 int shared_secret(struct SharedSecret *s, const struct CipherText x, const struct PrivateKey key) {
   if (crypto_scalarmult_ristretto255(s->val, key.val, x.c1) != 0) {
     error_print("ERROR: Could not generate shared secret\n");
@@ -74,7 +68,6 @@ int shared_secret(struct SharedSecret *s, const struct CipherText x, const struc
 int encode(struct PlainText *a, unsigned int message) {
   unsigned char s[crypto_core_ristretto255_SCALARBYTES];
   memset(s, 0, sizeof s);
-  //s[0] = message;
   memcpy(s,(char*)&message, sizeof(unsigned int));
   return crypto_scalarmult_ristretto255_base(a->val, s);
 }
@@ -425,10 +418,6 @@ int combine_private_keys(char *combined_fn, char **node_fns, const int ncount) {
   }
   return 0; }
 
-// Returns the size of the array in UnrolledCipherTexts
-// Returns negative value on error 
-// array "in" should be (-1)-delimited (alternately 255-delimited)
-// max_elem is in units of UnrolledCipherTexts
 int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const unsigned int max_elem) {
   unsigned int i = 0;
   struct UnrolledCipherText uval;
@@ -448,10 +437,6 @@ int encrypt_array(unsigned char *out, const unsigned char *in, const struct Publ
   return (int)i;
 }
 
-// Decrypt array
-// Returns the size of the array on success
-// Returns negative value on error
-// plain must have space for num_elem + 1 (to null terminate)
 int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const unsigned int num_elem) {
   unsigned int i = 0;
   //struct PlainText uval;
@@ -476,8 +461,6 @@ int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct P
 // Merge encrypted HLL arrays corresponding to CipherTexts
 // 
 
-// Reads newline separated integers in [0,BUCKET_MAX] file into array. If items were read, return the number. Return a negative number upon error.
-// max is the size of the ans buffer
 int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
   FILE * fp = fopen(fn, "r");
   char * line = NULL;
@@ -509,9 +492,6 @@ int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
   }
 }
 
-// Reads binary encrypted file into array, with serialized CipherText objects. Returns the number of objects read. Returns a negative number on error.
-// max is the max number of CipherTexts to try to read (i.e. dependon the size of the ans char array
-// sizeof ans = max_CipherText_num * 2 * crypto_core_ristretto255_BYTES
 int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText_num) {
   FILE *fp = fopen(fn, "rb");
   //char buffer[max_CipherText_num * 2 * crypto_core_ristretto255_BYTES];
@@ -550,8 +530,6 @@ int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText
 
 }
 
-// Encrypts a newline delimited list of integers in [1,BUCKET_MAX] from input_fn and writes it out to output_fn, using the public key found in key_fn
-//
 // Attention: GOTO used for cleanup
 int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
   unsigned int ciphertext_size = sizeof (((struct UnrolledCipherText*)0)->arr);
@@ -605,7 +583,6 @@ int encrypt_file(char *key_fn, char *input_fn, char *output_fn) {
 
 }
 
-// Reverses the encryption from encrypt_file
 int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
   int return_val = 0;
   unsigned int ciphertext_size = sizeof (((struct UnrolledCipherText*)0)->arr);
@@ -653,7 +630,6 @@ int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
   return return_val;
 }
 
-// a1 and a2 are byte arrays of concatenated CipherTexts
 int add_all_ciphertexts(unsigned char *a1, const unsigned char *a2, const int num_elem) {
   struct CipherText x;
   struct CipherText y;
@@ -670,13 +646,10 @@ int add_all_ciphertexts(unsigned char *a1, const unsigned char *a2, const int nu
   return 0;
 }
 
-// a1 and a2 are byte arrays of concatenated UnrolledCipherTexts
 int array_max_in_place(unsigned char *a1, const unsigned char *a2, const int num_array_elements) {
   return add_all_ciphertexts(a1, a2, num_array_elements*BUCKET_MAX);
 }
 
-// Adds together all ciphertexts found in fns, and puts output in combined_fn
-// ncount = number of ciphertexts
 int combine_binary_CipherText_files(char *combined_fn, char **fns, const int ncount) {
   unsigned int ciphertext_size = sizeof (((struct UnrolledCipherText*)0)->arr);
   FILE *combined_file = fopen(combined_fn, "rb");
