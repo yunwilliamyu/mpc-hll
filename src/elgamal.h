@@ -75,6 +75,9 @@ int priv2pub(struct PublicKey *a, const struct PrivateKey priv);
 int encrypt(struct CipherText *a, const struct PlainText plain, const struct PublicKey pub);
 int decrypt(struct PlainText *a, const struct CipherText x, const struct PrivateKey key);
 
+/* The basic homomorphic binary operation */
+int add_ciphertext(struct CipherText *a, const struct CipherText x, const struct CipherText y);
+
 /* generate a shared secret for distributed decryption of CipherText */
 int shared_secret(struct SharedSecret *s, const struct CipherText x, const struct PrivateKey key);
 int decrypt_with_sec(struct PlainText *a, const struct CipherText x, const struct SharedSecret s);
@@ -93,7 +96,6 @@ int encode(struct PlainText *a, const unsigned int message);
 unsigned char decode(const struct PlainText x);
 int decode_equal(const struct PlainText x, const unsigned int y);
 
-
 /* Performs a private equality test that gives a CipherText 0 if x == y,
  * and a random number otherwise */
 int private_equality_test(struct CipherText *a, const struct CipherText x, const struct CipherText y);
@@ -108,9 +110,6 @@ int write_pubkey(const struct PublicKey pubkey, const char *fn);
 int read_privkey(struct PrivateKey *a, const char *fn);
 int write_privkey(const struct PrivateKey privkey, const char *fn);
 
-/* The basic homomorphic binary operation */
-int add_ciphertext(struct CipherText *a, const struct CipherText x, const struct CipherText y);
-
 /* File IO wrapper
  * keygen_node will ensure that a private key is stored in private_fn and 
  * a matching public key is stored in public_fn, generating them if necessary,
@@ -123,7 +122,6 @@ int keygen_node(char *private_fn, char *public_fn);
 int combine_public_keys(char *combined_fn, char **node_fns, const int ncount);
 int combine_private_keys(char *combined_fn, char **node_fns, const int ncount);
 
-
 // Encrypts a newline delimited list of integers in [0,BUCKET_MAX] from input_fn and writes it out to output_fn, using the public key found in key_fn
 int encrypt_file(char *key_fn, char *input_fn, char *output_fn);
 // Reverses the encryption from encrypt_file
@@ -135,6 +133,8 @@ int read_file_to_array(unsigned char *ans, char *fn, size_t max);
 // max is the max number of CipherTexts to try to read (i.e. dependon the size of the ans char array
 // sizeof ans = max_CipherText_num * 2 * crypto_core_ristretto255_BYTES
 int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText_num);
+// Gets the shared secrets for a partial decryption of a file
+int decrypt_file_partial(char *key_fn, char *input_fn, char *output_fn);
 
 // Returns the size of the array in UnrolledCipherTexts
 // Returns negative value on error 

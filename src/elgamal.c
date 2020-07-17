@@ -458,9 +458,6 @@ int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct P
   return (int)num_elem;
 }
 
-// Merge encrypted HLL arrays corresponding to CipherTexts
-// 
-
 int read_file_to_array(unsigned char *ans, char *fn, size_t max) {
   FILE * fp = fopen(fn, "r");
   char * line = NULL;
@@ -627,6 +624,66 @@ int decrypt_file(char *key_fn, char *input_fn, char *output_fn) {
   if (byte_array != NULL) {
     free(byte_array);
   }
+  return return_val;
+}
+
+int decrypt_file_partial(char *key_fn, char *input_fn, char *output_fn) {
+  int return_val = 0;
+  struct PrivateKey priv_key;
+  int tmp;
+  unsigned int size_of_array = 0;
+  if ((tmp = read_privkey(&priv_key, key_fn)!=0)) {return tmp; }
+
+  ssize_t size;
+  size_t bytes_read = 0;
+  FILE *fp =fopen(input_fn, "rb");
+  unsigned char *in_array;
+  if (fp) {
+    fseek (fp , 0 , SEEK_END);
+    size = ftell (fp);
+    rewind (fp);
+    if (size % (2*crypto_core_ristretto255_BYTES) != 0) {
+      error_print("ERROR: %s contains %ld bytes, which does not divide %i.\n", input_fn, size, 2*crypto_core_ristretto255_BYTES);
+      fclose(fp);
+      return -1;
+    }
+    in_array = (unsigned char *)malloc((size_t)size);
+    bytes_read = fread(in_array, 1, (size_t)size, fp);
+    fclose(fp);
+  }
+
+  unsigned char *out_array = (unsigned char*)malloc((size_t)size/2);
+  struct SharedSecret s;
+  struct CipherText x;
+  for (int i=0; i< size/(2*crypto_core_ristretto255_BYTES); i++) {
+    memcpy(x.c1, &in_array[2*i*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    memcpy(x.c2, &in_array[(2*i+1)*crypto_core_ristretto255_BYTES], crypto_core_ristretto255_BYTES);
+    if (shared_secret(&s, x, priv_key)!=0) {
+      return_val = -1;
+      goto cleanup;
+    }
+    memcpy(&out_array[i*crypto_core_ristretto255_BYTES], s.val, crypto_core_ristretto255_BYTES);
+  }
+
+  size_t bytes_written = 0;
+  fp = fopen(output_fn, "wb");
+  if (fp) {
+    bytes_written = fwrite(out_array, 1, (size_t)size/2, fp);
+    fclose(fp);
+  }
+  if ((ssize_t)bytes_written != size/2) {
+    error_print("ERROR: incorrect number of bytes written to %s.\n", output_fn);
+    return_val = -5;
+    goto cleanup;
+  } else {
+    info_print("INFO: Written %lu bytes to %s.\n", bytes_written, output_fn);
+    return_val = 0;
+    goto cleanup;
+  }
+
+  cleanup:
+  free(in_array);
+  free(out_array);
   return return_val;
 }
 
