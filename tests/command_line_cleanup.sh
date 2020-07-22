@@ -1,2 +1,2 @@
 #!/bin/bash
-rm -f array*  command_test*
+rm -f array*  command_test* node*

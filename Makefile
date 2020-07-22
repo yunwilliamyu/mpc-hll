@@ -5,7 +5,7 @@ CFLAGS=-I${IDIR} -lsodium -pedantic -Wall -Wextra -Wcast-align -Wcast-qual -Wdis
 
 OBJS = $(patsubst src/%.c, obj/%.o, $(wildcard src/*.c))
 
-PROG=main keygen combine-keys encrypt_array decrypt_array combine-arrays
+PROG=main keygen combine-keys encrypt_array decrypt_array combine-arrays check-points combine-secrets get_partial_decryption decrypt_partial
 BIN_LIST=$(addprefix $(BIN), $(PROG))
 
 #all: ${OBJS} $(BIN_LIST)

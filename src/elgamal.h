@@ -34,6 +34,10 @@
  * SharedSecret gives one of the steps of ElGamal decryption, and they
  * can be used to do a distributed decryption of a CipherText
  *
+ * UnrolledPlainText is an array of Ristretto255 group points, encoding
+ * an integer in [0, ..., BUCKET_MAX] in a unary representation, so that
+ * when ElGamal-encrypted, we can take max's by homomorphic encryption
+ *
  * UnrolledCipherText is an array of CipherTexts, encoding an integer in
  * [0, ... , BUCKET_MAX] in a unary representation, so that we can
  * easily take max's of collections of CipherTexts by addition.
@@ -45,14 +49,20 @@ struct CipherText {
   unsigned char c1[crypto_core_ristretto255_BYTES];
   unsigned char c2[crypto_core_ristretto255_BYTES]; 
 };
-struct SharedSecret {
+struct PlainText {
   unsigned char val[crypto_core_ristretto255_BYTES];
 };
-struct PlainText {
+struct SharedSecret {
   unsigned char val[crypto_core_ristretto255_BYTES];
 };
 struct UnrolledCipherText {
   struct CipherText arr[BUCKET_MAX];
+};
+struct UnrolledPlainText {
+  struct PlainText arr[BUCKET_MAX];
+};
+struct UnrolledSharedSecret {
+  struct SharedSecret arr[BUCKET_MAX];
 };
 
 /* Most of the following functions store result in the first argument.
@@ -101,8 +111,11 @@ int decode_equal(const struct PlainText x, const unsigned int y);
 int private_equality_test(struct CipherText *a, const struct CipherText x, const struct CipherText y);
 
 /* Encodes/decodes a character in [0, BUCKET_MAX] to/from unary */
-int unroll(struct UnrolledCipherText *a, const unsigned char x, const struct PublicKey pub_key);
-int reroll(unsigned char *a, const struct UnrolledCipherText uct, const struct PrivateKey priv_key);
+int unroll(struct UnrolledPlainText *a, const unsigned char x);
+int reroll(unsigned char *a, const struct UnrolledPlainText upt);
+int unroll_and_encrypt(struct UnrolledCipherText *a, const unsigned char x, const struct PublicKey pub_key);
+int decrypt_and_reroll(unsigned char *a, const struct UnrolledCipherText uct, const struct PrivateKey priv_key);
+int decrypt_and_reroll_with_sec(unsigned char *a, const struct UnrolledCipherText uct, const struct UnrolledSharedSecret uss);
 
 /* File IO functions */
 int read_pubkey(struct PublicKey *a, const char *fn);
@@ -123,37 +136,47 @@ int combine_public_keys(char *combined_fn, char **node_fns, const int ncount);
 int combine_private_keys(char *combined_fn, char **node_fns, const int ncount);
 
 // Encrypts a newline delimited list of integers in [0,BUCKET_MAX] from input_fn and writes it out to output_fn, using the public key found in key_fn
-int encrypt_file(char *key_fn, char *input_fn, char *output_fn);
-// Reverses the encryption from encrypt_file
-int decrypt_file(char *key_fn, char *input_fn, char *output_fn);
+int encrypt_bucket_file(char *key_fn, char *input_fn, char *output_fn);
+// Reverses the encryption from encrypt_bucket_file
+int decrypt_bucket_file(char *key_fn, char *input_fn, char *output_fn);
+// Reverses the encryption from encrypt_bucket_file
+int decrypt_bucket_file_with_sec(char *shared_sec_fn, char *input_fn, char *output_fn);
 // Reads newline separated integers in [0,BUCKET_MAX] file into array. If items were read, return the number. Return a negative number upon error.
 // max is the size of the ans buffer
-int read_file_to_array(unsigned char *ans, char *fn, size_t max);
+int read_file_to_array(unsigned char *ans, char *fn, size_t buf_size);
 // Reads binary encrypted file into array, with serialized CipherText objects. Returns the number of objects read. Returns a negative number on error.
-// max is the max number of CipherTexts to try to read (i.e. dependon the size of the ans char array
-// sizeof ans = max_CipherText_num * 2 * crypto_core_ristretto255_BYTES
-int read_binary_CipherText_file(unsigned char *ans, char *fn, int max_CipherText_num);
+// sizeof ans = buf_size in bytes
+int read_binary_CipherText_file(unsigned char *ans, char *fn, int buf_size);
 // Gets the shared secrets for a partial decryption of a file
-int decrypt_file_partial(char *key_fn, char *input_fn, char *output_fn);
+int get_partial_decryptions(char *key_fn, char *input_fn, char *output_fn);
+// decrypts a file with a collection of partial decryptions
+int combine_partial_decryptions(char *combined_fn, char **node_fns, const int ncount);
+// Reads binary shared secrets file into array, with serialized SharedSecrets objects. Returns the number of objects read. Returns a negative number on error.
+// sizeof ans = buf_size in bytes
+int read_partial_decryption_file(unsigned char *ans, char *fn, int buf_size);
 
-// Returns the size of the array in UnrolledCipherTexts
+// Returns the number of buckets in UnrolledCipherTexts
 // Returns negative value on error 
 // array "in" should be (-1)-delimited (alternately 255-delimited)
 // max_elem is in units of UnrolledCipherTexts
-int encrypt_array(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const unsigned int max_elem);
+int encrypt_buckets(unsigned char *out, const unsigned char *in, const struct PublicKey pubkey, const unsigned int max_buckets);
 // Decrypt array
-// Returns the size of the array on success
+// Returns the number of buckets on success
 // Returns negative value on error
-// plain must have space for num_elem + 1 (to null terminate)
-int decrypt_array(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const unsigned int num_elem);
+// plain must have space for num_buckets + 1 (to null terminate)
+int decrypt_buckets(unsigned char *plain, const unsigned char *enc, const struct PrivateKey privkey, const unsigned int num_buckets);
+int decrypt_buckets_with_sec(unsigned char *plain, const unsigned char *enc, const unsigned char *shared_sec, const unsigned int num_buckets);
 
 // a1 and a2 are byte arrays of concatenated CipherTexts
 int add_all_ciphertexts(unsigned char *a1, const unsigned char *a2, const int num_ciphertexts);
+// a1 and a2 are byte arrays of concatenated SharedSecrets
+int add_all_secrets(unsigned char *a1, const unsigned char *a2, const int num_ciphertexts);
 // a1 and a2 are byte arrays of concatenated UnrolledCipherTexts
-int array_max_in_place(unsigned char *a1, const unsigned char *a2, const int num_array_elements);
+//int array_max_in_place(unsigned char *a1, const unsigned char *a2, const int num_array_elements);
 // Adds together all ciphertexts found in fns, and puts output in combined_fn
-// ncount = number of ciphertexts
+// ncount = number of CipherTexts
 int combine_binary_CipherText_files(char *combined_fn, char **fns, const int ncount);
+
 
 
 #endif // ELGAMAL_H
